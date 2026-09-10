@@ -1,0 +1,28 @@
+{
+  "name": "r5a5_2026_sujetb_ausousseau_pereira_back",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Plateforme de tournois",
+  "homepage": "https://github.com/DUT-Info-Montreuil/R5A5_2026_SUJETB_AUSOUSSEAU_PEREIRA_BACK#readme",
+  "bugs": {
+    "url": "https://github.com/DUT-Info-Montreuil/R5A5_2026_SUJETB_AUSOUSSEAU_PEREIRA_BACK/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DUT-Info-Montreuil/R5A5_2026_SUJETB_AUSOUSSEAU_PEREIRA_BACK.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.2",
+    "typescript": "^7.0.2"
+  }
+}
