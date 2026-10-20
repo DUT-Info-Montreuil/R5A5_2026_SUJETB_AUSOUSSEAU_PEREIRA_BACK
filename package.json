@@ -20,7 +20,9 @@
     "build": "tsc",
     "start": "tsx src/server.ts",
     "test:watch": "vitest",
-    "seed:admin": "tsx --env-file=.env src/scripts/seedAdmin.ts"
+    "seed:admin": "tsx --env-file=.env src/scripts/seedAdmin.ts",
+    "migrate": "tsx --env-file=.env src/scripts/migrate.ts up",
+    "migrate:rollback": "tsx --env-file=.env src/scripts/migrate.ts down"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

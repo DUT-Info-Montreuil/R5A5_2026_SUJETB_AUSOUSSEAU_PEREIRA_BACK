@@ -1,10 +1,12 @@
 // Ligne telle que stockée en base : ne jamais la renvoyer directement au client
 export interface UserRow {
     id: number;
+    public_id: string;
     username: string;
     email: string;
     password_hash: string;
     is_admin: 0 | 1;
+    token_version: number;
     created_at: string;
 }
 

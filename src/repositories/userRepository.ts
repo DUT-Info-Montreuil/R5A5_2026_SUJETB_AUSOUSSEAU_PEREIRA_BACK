@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { db } from '../db.js';
 import type { UserRow } from '../types/user.js';
 
@@ -27,8 +28,8 @@ export function findByEmailOrUsername(email: string, username: string): UserRow[
 
 export function create(user: NewUser): UserRow {
     return db
-        .prepare<[string, string, string, number], UserRow>(
-            'INSERT INTO users (username, email, password_hash, is_admin) VALUES (?, ?, ?, ?) RETURNING *',
+        .prepare<[string, string, string, string, number], UserRow>(
+            'INSERT INTO users (public_id, username, email, password_hash, is_admin) VALUES (?, ?, ?, ?, ?) RETURNING *',
         )
-        .get(user.username, user.email, user.passwordHash, user.isAdmin ? 1 : 0)!;
+        .get(randomUUID(), user.username, user.email, user.passwordHash, user.isAdmin ? 1 : 0)!;
 }
