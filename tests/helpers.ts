@@ -1,6 +1,7 @@
-import request from 'supertest';
+import request, { type Response } from 'supertest';
 import { app } from '../src/app.js';
 import { db } from '../src/db.js';
+import * as authService from '../src/services/authService.js';
 
 export const validUser = {
     username: 'alice',
@@ -9,12 +10,47 @@ export const validUser = {
     password: 'cheval-agrafe-pile-42',
 };
 
-export async function registerUser(overrides: Partial<typeof validUser> = {}) {
-    const res = await request(app).post('/api/auth/register').send({ ...validUser, ...overrides });
-    if (res.status !== 201) throw new Error(`register a échoué : ${res.status} ${JSON.stringify(res.body)}`);
-    return res.body as { token: string; user: { id: number } };
+export interface TestSession {
+    accessToken: string;
+    user: { id: string; role: string };
+    // Header Cookie prêt à renvoyer (refresh_token=...)
+    refreshCookie: string;
 }
 
-export function setAdmin(userId: number, isAdmin: boolean): void {
-    db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, userId);
+/** Extrait `nom=valeur` d'un Set-Cookie de la réponse. */
+export function cookieFrom(res: Response, name: string): string | undefined {
+    const setCookie = res.headers['set-cookie'] as unknown as string[] | undefined;
+    return setCookie?.find((c) => c.startsWith(`${name}=`))?.split(';')[0];
+}
+
+function toSession(res: Response): TestSession {
+    return { ...res.body, refreshCookie: cookieFrom(res, 'refresh_token')! };
+}
+
+export async function registerUser(overrides: Partial<typeof validUser> = {}): Promise<TestSession> {
+    const res = await request(app).post('/api/auth/register').send({ ...validUser, ...overrides });
+    if (res.status !== 201) throw new Error(`register a échoué : ${res.status} ${JSON.stringify(res.body)}`);
+    return toSession(res);
+}
+
+export async function loginUser(email = validUser.email, password = validUser.password): Promise<TestSession> {
+    const res = await request(app).post('/api/auth/login').send({ email, password });
+    if (res.status !== 200) throw new Error(`login a échoué : ${res.status} ${JSON.stringify(res.body)}`);
+    return toSession(res);
+}
+
+export function internalId(publicId: string): number {
+    return (db.prepare('SELECT id FROM users WHERE public_id = ?').get(publicId) as { id: number }).id;
+}
+
+/** Passe par le service : un changement de rôle invalide les jetons déjà émis. */
+export function setAdmin(publicId: string, isAdmin: boolean): void {
+    authService.setAdmin(internalId(publicId), isAdmin);
+}
+
+/** Crée un administrateur et renvoie une session émise APRÈS la promotion. */
+export async function registerAdmin(overrides: Partial<typeof validUser> = {}): Promise<TestSession> {
+    const { user } = await registerUser(overrides);
+    setAdmin(user.id, true);
+    return loginUser(overrides.email ?? validUser.email, overrides.password ?? validUser.password);
 }

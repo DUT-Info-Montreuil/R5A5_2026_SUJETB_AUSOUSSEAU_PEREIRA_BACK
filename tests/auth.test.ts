@@ -6,27 +6,33 @@ import { db } from '../src/db.js';
 import { registerUser, validUser } from './helpers.js';
 
 describe('POST /api/auth/register', () => {
-    it('crée un compte et renvoie un token et l\'utilisateur public', async () => {
+    it('crée un compte et renvoie un access token et l\'utilisateur public', async () => {
         const res = await request(app).post('/api/auth/register').send(validUser);
 
         expect(res.status).toBe(201);
-        expect(typeof res.body.token).toBe('string');
+        expect(typeof res.body.accessToken).toBe('string');
+        expect(res.body.expiresIn).toBe(900);
         expect(res.body.user).toEqual({
-            id: expect.any(Number),
+            id: expect.stringMatching(/^[0-9a-f-]{36}$/),
             username: 'alice',
             email: 'alice@example.com',
+            role: 'user',
             isAdmin: false,
             createdAt: expect.any(String),
         });
         expect(JSON.stringify(res.body)).not.toMatch(/password/i);
     });
 
-    it('met le token au format { sub } uniquement', async () => {
-        const { token, user } = await registerUser();
-        const payload = jwt.decode(token) as Record<string, unknown>;
+    it('limite l\'access token aux claims prévus, sans donnée personnelle', async () => {
+        const { accessToken, user } = await registerUser();
+        const payload = jwt.decode(accessToken) as Record<string, unknown>;
 
-        expect(payload.sub).toBe(String(user.id));
-        expect(Object.keys(payload).sort()).toEqual(['exp', 'iat', 'sub']);
+        expect(payload.sub).toBe(user.id);
+        expect(payload.type).toBe('access');
+        expect(payload.role).toBe('user');
+        expect(payload.exp).toBe((payload.iat as number) + 900);
+        expect(Object.keys(payload).sort()).toEqual(['exp', 'iat', 'jti', 'nbf', 'role', 'sub', 'type', 'ver']);
+        expect(JSON.stringify(payload)).not.toMatch(/alice|example\.com|argon2/);
     });
 
     it('refuse un email déjà pris (409), même avec une casse différente', async () => {
@@ -89,7 +95,7 @@ describe('POST /api/auth/login', () => {
             .send({ email: validUser.email, password: validUser.password });
 
         expect(res.status).toBe(200);
-        expect(typeof res.body.token).toBe('string');
+        expect(typeof res.body.accessToken).toBe('string');
         expect(res.body.user.email).toBe(validUser.email);
         expect(JSON.stringify(res.body)).not.toMatch(/password/i);
     });
@@ -101,7 +107,7 @@ describe('POST /api/auth/login', () => {
             .send({ email: validUser.email, password: 'mauvais-mdp' });
 
         expect(res.status).toBe(401);
-        expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+        expect(res.body.error).toEqual({ code: 'INVALID_CREDENTIALS', message: 'Identifiants invalides' });
     });
 
     it('renvoie exactement la même erreur pour un email inconnu et un mauvais mot de passe', async () => {
@@ -127,8 +133,8 @@ describe('POST /api/auth/login', () => {
 
 describe('GET /api/auth/me', () => {
     it('renvoie l\'utilisateur connecté', async () => {
-        const { token, user } = await registerUser();
-        const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+        const { accessToken, user } = await registerUser();
+        const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.user.id).toBe(user.id);
@@ -143,8 +149,8 @@ describe('GET /api/auth/me', () => {
     });
 
     it('refuse un header sans le préfixe Bearer (401)', async () => {
-        const { token } = await registerUser();
-        const res = await request(app).get('/api/auth/me').set('Authorization', token);
+        const { accessToken } = await registerUser();
+        const res = await request(app).get('/api/auth/me').set('Authorization', accessToken);
 
         expect(res.status).toBe(401);
         expect(res.body.error.code).toBe('UNAUTHORIZED');
@@ -158,8 +164,8 @@ describe('GET /api/auth/me', () => {
     });
 
     it('refuse un token signé avec un autre secret (401 INVALID_TOKEN)', async () => {
-        const { user } = await registerUser();
-        const forged = jwt.sign({ sub: String(user.id) }, 'mauvais-secret');
+        const { accessToken } = await registerUser();
+        const forged = jwt.sign(jwt.decode(accessToken) as object, 'mauvais-secret-mauvais-secret-mauvais-secret');
         const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${forged}`);
 
         expect(res.status).toBe(401);
@@ -168,8 +174,9 @@ describe('GET /api/auth/me', () => {
 
     it('refuse un token expiré (401 TOKEN_EXPIRED)', async () => {
         const { user } = await registerUser();
+        const now = Math.floor(Date.now() / 1000);
         const expired = jwt.sign(
-            { sub: String(user.id), exp: Math.floor(Date.now() / 1000) - 60 },
+            { sub: user.id, jti: crypto.randomUUID(), type: 'access', role: 'user', ver: 0, iat: now - 960, nbf: now - 960, exp: now - 60 },
             process.env.JWT_SECRET!,
         );
         const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${expired}`);
@@ -179,9 +186,9 @@ describe('GET /api/auth/me', () => {
     });
 
     it('refuse le token d\'un compte supprimé (401 INVALID_TOKEN)', async () => {
-        const { token, user } = await registerUser();
-        db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
-        const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+        const { accessToken, user } = await registerUser();
+        db.prepare('DELETE FROM users WHERE public_id = ?').run(user.id);
+        const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
 
         expect(res.status).toBe(401);
         expect(res.body.error.code).toBe('INVALID_TOKEN');
@@ -189,8 +196,15 @@ describe('GET /api/auth/me', () => {
 });
 
 describe('Routes inconnues', () => {
-    it('renvoie 404 NOT_FOUND au format standard', async () => {
+    it('renvoie 401 sans token : refus par défaut, l\'existence d\'une route n\'est pas révélée', async () => {
         const res = await request(app).get('/api/nexiste-pas');
+
+        expect(res.status).toBe(401);
+    });
+
+    it('renvoie 404 NOT_FOUND au format standard avec un token valide', async () => {
+        const { accessToken } = await registerUser();
+        const res = await request(app).get('/api/nexiste-pas').set('Authorization', `Bearer ${accessToken}`);
 
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: { code: 'NOT_FOUND', message: expect.any(String) } });

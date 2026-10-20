@@ -1,51 +1,50 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import { authenticate } from '../src/middlewares/authenticate.js';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
-import { requireAdmin } from '../src/middlewares/requireAdmin.js';
-import { requireAuth } from '../src/middlewares/requireAuth.js';
-import { registerUser, setAdmin } from './helpers.js';
+import { requireRole } from '../src/middlewares/requireRole.js';
+import { registerAdmin, registerUser, setAdmin } from './helpers.js';
 
-// Aucune route admin n'existe encore : on monte une route factice
+// Aucune route admin n'existe encore : on monte une route factice derrière le garde global
 const testApp = express();
-testApp.get('/admin-only', requireAuth, requireAdmin, (req, res) => {
+testApp.use(authenticate);
+testApp.get('/admin-only', requireRole('admin'), (req, res) => {
     res.json({ ok: true });
 });
 testApp.use(errorHandler);
 
-describe('requireAdmin', () => {
+describe('requireRole(\'admin\')', () => {
     it('refuse un utilisateur non admin (403 FORBIDDEN)', async () => {
-        const { token } = await registerUser();
-        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`);
+        const { accessToken } = await registerUser();
+        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${accessToken}`);
 
         expect(res.status).toBe(403);
         expect(res.body.error.code).toBe('FORBIDDEN');
     });
 
     it('laisse passer un admin', async () => {
-        const { token, user } = await registerUser();
-        setAdmin(user.id, true);
-        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`);
+        const { accessToken } = await registerAdmin();
+        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ ok: true });
     });
 
-    it('refuse sans token (401) : requireAuth passe avant', async () => {
+    it('refuse sans token (401) : le garde d\'authentification passe avant', async () => {
         const res = await request(testApp).get('/admin-only');
 
         expect(res.status).toBe(401);
     });
 
-    it('prend en compte immédiatement un admin rétrogradé, même avec un token émis avant', async () => {
-        const { token, user } = await registerUser();
-        setAdmin(user.id, true);
-        expect((await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`)).status).toBe(200);
+    it('invalide immédiatement le token d\'un admin rétrogradé (401 TOKEN_REVOKED)', async () => {
+        const { accessToken, user } = await registerAdmin();
+        expect((await request(testApp).get('/admin-only').set('Authorization', `Bearer ${accessToken}`)).status).toBe(200);
 
         setAdmin(user.id, false);
-        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`);
+        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${accessToken}`);
 
-        expect(res.status).toBe(403);
-        expect(res.body.error.code).toBe('FORBIDDEN');
+        expect(res.status).toBe(401);
+        expect(res.body.error.code).toBe('TOKEN_REVOKED');
     });
 });

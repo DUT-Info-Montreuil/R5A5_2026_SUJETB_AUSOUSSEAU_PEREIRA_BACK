@@ -1,6 +1,8 @@
 import express, { type Express, type Request, type Response } from 'express';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { config } from './config.js'; // plante au démarrage si la configuration est incomplète
+import { authenticate } from './middlewares/authenticate.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import { httpsOnly } from './middlewares/httpsOnly.js';
 import { requestId } from './middlewares/requestId.js';
@@ -27,14 +29,24 @@ app.use(cors({
     exposedHeaders: ['Retry-After', 'X-Request-Id'],
     maxAge: 600,
 }));
+app.use(cookieParser());
 app.use(requireJson);
 app.use(express.json({ limit: config.bodyLimit }));
+// Refus par défaut : un seul garde pour toutes les routes, liste blanche dans security/publicRoutes.ts
+app.use(authenticate);
 
 app.get('/api/health', (req: Request, res: Response) => {
     res.json({ status: 'ok' });
 });
 
-app.use('/api/auth', authRoutes);
+// Routeurs montés : listés ici pour que tests/routes.test.ts puisse énumérer toutes les routes
+export const mountedRouters = [
+    { prefix: '/api/auth', router: authRoutes },
+] as const;
+
+for (const { prefix, router } of mountedRouters) {
+    app.use(prefix, router);
+}
 
 // Toujours en dernier
 app.use(notFoundHandler);

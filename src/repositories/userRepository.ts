@@ -37,3 +37,24 @@ export function create(user: NewUser): UserRow {
 export function updatePasswordHash(id: number, passwordHash: string): void {
     db.prepare<[string, number]>('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
 }
+
+export function findByPublicId(publicId: string): UserRow | undefined {
+    return db.prepare<[string], UserRow>('SELECT * FROM users WHERE public_id = ?').get(publicId);
+}
+
+/** Invalide tous les jetons déjà émis pour cet utilisateur. */
+export function incrementTokenVersion(id: number): void {
+    db.prepare<[number]>('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(id);
+}
+
+/** Changement de rôle : incrémente token_version dans la même requête (jetons émis invalidés). */
+export function setAdmin(id: number, isAdmin: boolean): void {
+    db.prepare<[number, number]>('UPDATE users SET is_admin = ?, token_version = token_version + 1 WHERE id = ?')
+        .run(isAdmin ? 1 : 0, id);
+}
+
+/** Changement de mot de passe : incrémente token_version dans la même requête. */
+export function changePasswordHash(id: number, passwordHash: string): void {
+    db.prepare<[string, number]>('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?')
+        .run(passwordHash, id);
+}
