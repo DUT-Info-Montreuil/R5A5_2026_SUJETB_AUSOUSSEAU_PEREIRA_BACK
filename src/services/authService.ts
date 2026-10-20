@@ -1,16 +1,14 @@
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { AppError } from '../errors/AppError.js';
 import * as userRepository from '../repositories/userRepository.js';
+import { hashPassword, needsRehash, verifyPassword } from '../security/password.js';
 import { toPublicUser, type PublicUser } from '../types/user.js';
 import type { LoginInput, RegisterInput } from '../validators/authSchemas.js';
 
-const BCRYPT_COST = 12;
-
-// Comparé quand l'email est inconnu, pour que le temps de réponse ne révèle pas
+// Vérifié quand l'email est inconnu, pour que le temps de réponse ne révèle pas
 // si un compte existe
-const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', BCRYPT_COST);
+const dummyHash = hashPassword('dummy-password-for-timing');
 
 export interface AuthResult {
     token: string;
@@ -38,7 +36,7 @@ export async function createUser(input: RegisterInput, isAdmin = false): Promise
         throw new AppError(409, 'USERNAME_TAKEN', 'Ce nom d\'utilisateur est déjà utilisé');
     }
 
-    const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+    const passwordHash = await hashPassword(input.password);
 
     try {
         const row = userRepository.create({
@@ -64,10 +62,15 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
 
 export async function login(input: LoginInput): Promise<AuthResult> {
     const row = userRepository.findByEmail(input.email);
-    const passwordOk = await bcrypt.compare(input.password, row?.password_hash ?? DUMMY_HASH);
+    const passwordOk = await verifyPassword(row?.password_hash ?? (await dummyHash), input.password);
 
     if (!row || !passwordOk) {
-        throw new AppError(401, 'INVALID_CREDENTIALS', 'Email ou mot de passe incorrect');
+        throw new AppError(401, 'INVALID_CREDENTIALS', 'Identifiants invalides');
+    }
+
+    // Ancienne empreinte (bcrypt) : on profite du mot de passe en clair, vérifié, pour la remplacer
+    if (needsRehash(row.password_hash)) {
+        userRepository.updatePasswordHash(row.id, await hashPassword(input.password));
     }
 
     return { token: signToken(row.id), user: toPublicUser(row) };

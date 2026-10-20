@@ -5,7 +5,8 @@ import { db } from '../src/db.js';
 export const validUser = {
     username: 'alice',
     email: 'alice@example.com',
-    password: 'motdepasse123',
+    // 12 caractères minimum, absent des listes de fuites
+    password: 'cheval-agrafe-pile-42',
 };
 
 export async function registerUser(overrides: Partial<typeof validUser> = {}) {

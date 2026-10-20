@@ -25,6 +25,7 @@
     "migrate:rollback": "tsx --env-file=.env src/scripts/migrate.ts down"
   },
   "dependencies": {
+    "argon2": "^0.45.1",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",

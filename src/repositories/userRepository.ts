@@ -33,3 +33,7 @@ export function create(user: NewUser): UserRow {
         )
         .get(randomUUID(), user.username, user.email, user.passwordHash, user.isAdmin ? 1 : 0)!;
 }
+
+export function updatePasswordHash(id: number, passwordHash: string): void {
+    db.prepare<[string, number]>('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+}
