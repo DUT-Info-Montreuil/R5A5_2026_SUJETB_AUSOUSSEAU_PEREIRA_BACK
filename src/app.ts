@@ -36,8 +36,8 @@ app.use(globalRateLimit);
 app.use(cookieParser());
 app.use(requireJson);
 app.use(express.json({ limit: config.bodyLimit }));
-// Refus par défaut : un seul garde pour toutes les routes, liste blanche dans security/publicRoutes.ts
 app.use(originCheck);
+// Refus par défaut : un seul garde pour toutes les routes, liste blanche dans security/publicRoutes.ts
 app.use(authenticate);
 // Après l'authentification : sans jeton, une route protégée répond 401 avant tout contrôle CSRF
 app.use(csrfProtection);

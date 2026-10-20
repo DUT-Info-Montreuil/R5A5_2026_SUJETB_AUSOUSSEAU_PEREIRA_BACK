@@ -2,24 +2,45 @@
 
 ## Conventions
 
-- Toutes les routes sont préfixées par `/api` et échangent du JSON.
-- Authentification : header `Authorization: Bearer <token>`.
-- Dates au format ISO 8601 (UTC), identifiants numériques.
+- Toutes les routes sont préfixées par `/api` et échangent du JSON (`Content-Type: application/json`, sinon `415`).
+- Authentification : header `Authorization: Bearer <accessToken>` (jamais dans l'URL).
+- Toute requête `POST`/`PUT`/`PATCH`/`DELETE` porte `X-CSRF-Token` (valeur de `GET /api/auth/csrf`), sinon `403`.
+- Dates au format ISO 8601 (UTC). Les utilisateurs sont identifiés par un UUID (`user.id`) ; les autres
+  identifiants sont encore numériques (à passer en UUID public comme `users.public_id`).
+- Corps de requête : champs inconnus refusés (`400`), 100 ko maximum (`413`).
 - Format d'erreur unique : `{ "error": { "code": "TEAM_FULL", "message": "L'équipe est complète" } }`
 - Codes HTTP :
   - `400` données invalides
-  - `401` non connecté
-  - `403` connecté mais pas autorisé
-  - `404` ressource introuvable
+  - `401` non connecté, jeton absent, expiré, invalide ou révoqué
+  - `403` connecté mais pas autorisé (rôle, propriété), ou jeton anti-CSRF / origine invalide
+  - `404` ressource introuvable (connecté et autorisé)
   - `409` conflit avec l'état actuel (équipe complète, inscriptions closes...)
+  - `413` corps trop volumineux, `415` corps non JSON
+  - `429` trop de requêtes (en-tête `Retry-After`)
+
+## Classement et mise en œuvre de l'accès
+
+Refus par défaut : une route exige un access token, sauf si elle figure dans `src/security/publicRoutes.ts`.
+
+| Accès indiqué | Mise en œuvre |
+|---|---|
+| Public | ajoutée à `publicRoutes.ts` (mode `optional` si le contenu varie selon la connexion) |
+| Connecté | rien à faire : garde global |
+| Admin | `requireRole('admin')` sur la route (403) |
+| Capitaine, Membre, Auteur, organisateur | vérifié dans le use case, qui lève `AccessDenied` (403) — voir `src/policies/` |
 
 ## Authentification
 
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
-| POST | `/api/auth/register` | Public | Créer un compte |
-| POST | `/api/auth/login` | Public | Se connecter, renvoie un token |
+| GET | `/api/auth/csrf` | Public | Renvoie `{ csrfToken }` et pose le cookie `csrf` |
+| POST | `/api/auth/register` | Public | Créer un compte : 201 `{ accessToken, expiresIn, user }` + cookie refresh |
+| POST | `/api/auth/login` | Public | Se connecter : 200 `{ accessToken, expiresIn, user }` + cookie refresh. 401 « Identifiants invalides », 429 si délai |
+| POST | `/api/auth/refresh` | Cookie refresh | Nouvel access token, rotation du refresh |
+| POST | `/api/auth/logout` | Cookie refresh | 204, révoque le refresh et supprime le cookie |
 | GET | `/api/auth/me` | Connecté | Infos de l'utilisateur connecté |
+
+`user` : `{ id (UUID), username, email, role ('user' | 'admin'), isAdmin, createdAt }`.
 
 ## Jeux
 
