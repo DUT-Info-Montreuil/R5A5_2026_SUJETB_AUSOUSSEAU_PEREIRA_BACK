@@ -5,6 +5,8 @@ declare global {
         interface Request {
             // Rempli par requireAuth
             user?: PublicUser;
+            // Rempli par le middleware requestId
+            requestId: string;
         }
     }
 }

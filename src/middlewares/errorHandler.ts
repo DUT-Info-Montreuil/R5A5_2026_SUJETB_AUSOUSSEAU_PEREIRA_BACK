@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
+import { config } from '../config.js';
 import { AppError } from '../errors/AppError.js';
 
 export function notFoundHandler(req: Request, res: Response): void {
@@ -48,8 +49,33 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
         return;
     }
 
-    console.error(err);
+    // Autres erreurs de express.json() : corps trop gros, encodage ou charset non pris en charge
+    if (err instanceof Error && 'type' in err) {
+        if (err.type === 'entity.too.large') {
+            res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Corps de requête trop volumineux' } });
+            return;
+        }
+        if (err.type === 'encoding.unsupported' || err.type === 'charset.unsupported') {
+            res.status(415).json({ error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Encodage non pris en charge' } });
+            return;
+        }
+    }
+
+    // Détail dans les logs uniquement, relié à la réponse par l'identifiant de requête
+    console.error(JSON.stringify({
+        level: 'error',
+        requestId: req.requestId,
+        method: req.method,
+        path: req.path,
+        error: err instanceof Error ? err.stack : String(err),
+    }));
     res.status(500).json({
-        error: { code: 'INTERNAL_ERROR', message: 'Erreur interne du serveur' },
+        error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Erreur interne du serveur',
+            requestId: req.requestId,
+            // Jamais en production : config.ts refuse de démarrer avec DEBUG=true
+            ...(config.debug && err instanceof Error && { details: err.message }),
+        },
     });
 }
