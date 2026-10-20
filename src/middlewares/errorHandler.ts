@@ -17,6 +17,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     }
 
     if (err instanceof AppError) {
+        if (err.headers) res.set(err.headers);
         res.status(err.status).json({
             error: {
                 code: err.code,

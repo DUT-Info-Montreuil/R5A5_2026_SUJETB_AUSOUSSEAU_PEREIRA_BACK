@@ -6,6 +6,7 @@ import { authenticate } from './middlewares/authenticate.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import { httpsOnly } from './middlewares/httpsOnly.js';
 import { originCheck } from './middlewares/originCheck.js';
+import { globalRateLimit } from './middlewares/rateLimits.js';
 import { requestId } from './middlewares/requestId.js';
 import { requireJson } from './middlewares/requireJson.js';
 import { securityHeaders } from './middlewares/securityHeaders.js';
@@ -31,6 +32,7 @@ app.use(cors({
     exposedHeaders: ['Retry-After', 'X-Request-Id'],
     maxAge: 600,
 }));
+app.use(globalRateLimit);
 app.use(cookieParser());
 app.use(requireJson);
 app.use(express.json({ limit: config.bodyLimit }));

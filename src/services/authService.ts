@@ -7,6 +7,7 @@ import * as refreshTokenRepository from '../repositories/refreshTokenRepository.
 import * as userRepository from '../repositories/userRepository.js';
 import { hashPassword, needsRehash, verifyPassword } from '../security/password.js';
 import { securityLog } from '../security/securityLog.js';
+import { assertLoginAllowed, recordLoginFailure, resetLoginFailures } from './loginThrottle.js';
 import { signAccessToken, signRefreshToken, verifyAccessToken, verifyRefreshToken } from '../security/tokens.js';
 import { roleOf, toPublicUser, type AuthUser, type PublicUser, type UserRow } from '../types/user.js';
 import { newPassword, type LoginInput, type RegisterInput } from '../validators/authSchemas.js';
@@ -84,10 +85,18 @@ export async function register(input: RegisterInput): Promise<Session> {
 }
 
 export async function login(input: LoginInput, req?: Request): Promise<Session> {
+    try {
+        assertLoginAllowed(input.email);
+    } catch (err) {
+        securityLog('login_delayed', req);
+        throw err;
+    }
+
     const row = userRepository.findByEmail(input.email);
     const passwordOk = await verifyPassword(row?.password_hash ?? (await dummyHash), input.password);
 
     if (!row || !passwordOk) {
+        recordLoginFailure(input.email);
         securityLog('login_failed', req);
         throw new AppError(401, 'INVALID_CREDENTIALS', 'Identifiants invalides');
     }
@@ -97,6 +106,7 @@ export async function login(input: LoginInput, req?: Request): Promise<Session> 
         userRepository.updatePasswordHash(row.id, await hashPassword(input.password));
     }
 
+    resetLoginFailures(input.email);
     refreshTokenRepository.deleteExpired();
     return issueSession(row);
 }
