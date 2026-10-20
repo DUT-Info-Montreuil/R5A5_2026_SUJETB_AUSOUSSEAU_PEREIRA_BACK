@@ -8,8 +8,17 @@ export default defineConfig({
         // donc a sa propre base, et le fichier de dev n'est jamais touché
         env: {
             DB_PATH: ':memory:',
-            JWT_SECRET: 'test-secret',
-            JWT_EXPIRES_IN: '1h',
+            // Valeur de test uniquement (32+ octets), jamais utilisée ailleurs
+            JWT_SECRET: 'test-only-secret-0123456789abcdefghijklmnopqrstuvwxyz',
+            // Supertest parle en HTTP : réglage « dev local » (jamais en production)
+            COOKIE_SECURE: 'false',
+            COOKIE_SAMESITE: 'lax',
+            // Limites larges pour la suite ; les tests de limitation les abaissent eux-mêmes
+            RATE_LIMIT_GLOBAL_PER_MIN: '100000',
+            RATE_LIMIT_LOGIN_PER_MIN: '100000',
+            RATE_LIMIT_REGISTER_PER_MIN: '100000',
+            RATE_LIMIT_REFRESH_PER_MIN: '100000',
+            RATE_LIMIT_CSRF_PER_MIN: '100000',
         },
     },
 });

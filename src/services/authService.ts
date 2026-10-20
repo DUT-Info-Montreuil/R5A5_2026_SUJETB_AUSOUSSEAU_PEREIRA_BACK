@@ -16,7 +16,10 @@ export interface AuthResult {
 }
 
 export function signToken(userId: number): string {
-    return jwt.sign({ sub: String(userId) }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
+    return jwt.sign({ sub: String(userId) }, config.jwtSecret, {
+        algorithm: 'HS256',
+        expiresIn: config.accessTokenTtlSeconds,
+    });
 }
 
 function isUniqueViolation(err: unknown): boolean {
