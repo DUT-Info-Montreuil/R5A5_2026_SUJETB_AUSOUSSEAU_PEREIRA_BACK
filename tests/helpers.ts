@@ -8,7 +8,7 @@ export const validUser = {
     username: 'alice',
     email: 'alice@example.com',
     // 12 caractères minimum, absent des listes de fuites
-    password: 'cheval-agrafe-pile-42',
+    password: 'cheval-agrafe-pile-42', // gitleaks:allow (mot de passe de test, pas un secret)
 };
 
 // Paire double-submit valide (cookie + header identiques), comme après GET /api/auth/csrf
