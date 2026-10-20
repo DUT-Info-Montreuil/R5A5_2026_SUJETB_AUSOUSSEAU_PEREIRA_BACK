@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import * as authService from '../services/authService.js';
-import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from '../security/cookies.js';
+import { clearRefreshCookie, CSRF_COOKIE, REFRESH_COOKIE, setCsrfCookie, setRefreshCookie } from '../security/cookies.js';
+import { generateCsrfToken, isWellFormedCsrfToken } from '../security/csrf.js';
 import { loginSchema, registerSchema } from '../validators/authSchemas.js';
 
 // L'access token part dans le corps (le front le garde en mémoire),
@@ -8,6 +9,14 @@ import { loginSchema, registerSchema } from '../validators/authSchemas.js';
 function sendSession(res: Response, session: authService.Session, status = 200): void {
     setRefreshCookie(res, session.refreshToken);
     res.status(status).json({ accessToken: session.accessToken, expiresIn: session.expiresIn, user: session.user });
+}
+
+// Réutilise le jeton déjà posé : plusieurs onglets partagent le même cookie
+export function csrf(req: Request, res: Response): void {
+    const existing: unknown = req.cookies?.[CSRF_COOKIE];
+    const csrfToken = isWellFormedCsrfToken(existing) ? existing : generateCsrfToken();
+    setCsrfCookie(res, csrfToken);
+    res.json({ csrfToken });
 }
 
 export async function register(req: Request, res: Response): Promise<void> {

@@ -8,6 +8,7 @@ export const authRoutes: Router = Router();
 
 authRoutes.use(noStore);
 
+authRoutes.get('/csrf', authController.csrf);
 authRoutes.post('/register', authController.register);
 authRoutes.post('/login', authController.login);
 authRoutes.post('/refresh', authController.refresh);

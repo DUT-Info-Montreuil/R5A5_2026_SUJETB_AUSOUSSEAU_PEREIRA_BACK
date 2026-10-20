@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { app } from '../src/app.js';
 import { db } from '../src/db.js';
 import { hashPassword, needsRehash, verifyPassword } from '../src/security/password.js';
-import { validUser } from './helpers.js';
+import { post, validUser } from './helpers.js';
 
 function register(password: string) {
-    return request(app).post('/api/auth/register').send({ ...validUser, password });
+    return post('/api/auth/register').send({ ...validUser, password });
 }
 
 describe('hashPassword / verifyPassword', () => {
@@ -70,8 +70,7 @@ describe('migration des anciennes empreintes au login', () => {
             bcrypt.hashSync('ancien-mot-de-passe', 4),
         );
 
-        const res = await request(app)
-            .post('/api/auth/login')
+        const res = await post('/api/auth/login')
             .send({ email: 'ancien@example.com', password: 'ancien-mot-de-passe' });
 
         expect(res.status).toBe(200);
@@ -89,7 +88,7 @@ describe('migration des anciennes empreintes au login', () => {
             legacy,
         );
 
-        await request(app).post('/api/auth/login').send({ email: 'ancien@example.com', password: 'mauvais' });
+        await post('/api/auth/login').send({ email: 'ancien@example.com', password: 'mauvais' });
 
         const row = db.prepare("SELECT password_hash FROM users WHERE username = 'ancien'").get() as { password_hash: string };
         expect(row.password_hash).toBe(legacy);

@@ -3,11 +3,11 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { app } from '../src/app.js';
 import { db } from '../src/db.js';
-import { registerUser, validUser } from './helpers.js';
+import { post, registerUser, validUser } from './helpers.js';
 
 describe('POST /api/auth/register', () => {
     it('crée un compte et renvoie un access token et l\'utilisateur public', async () => {
-        const res = await request(app).post('/api/auth/register').send(validUser);
+        const res = await post('/api/auth/register').send(validUser);
 
         expect(res.status).toBe(201);
         expect(typeof res.body.accessToken).toBe('string');
@@ -37,8 +37,7 @@ describe('POST /api/auth/register', () => {
 
     it('refuse un email déjà pris (409), même avec une casse différente', async () => {
         await registerUser();
-        const res = await request(app)
-            .post('/api/auth/register')
+        const res = await post('/api/auth/register')
             .send({ ...validUser, username: 'bob', email: 'ALICE@example.com' });
 
         expect(res.status).toBe(409);
@@ -47,8 +46,7 @@ describe('POST /api/auth/register', () => {
 
     it('refuse un username déjà pris (409)', async () => {
         await registerUser();
-        const res = await request(app)
-            .post('/api/auth/register')
+        const res = await post('/api/auth/register')
             .send({ ...validUser, email: 'autre@example.com' });
 
         expect(res.status).toBe(409);
@@ -56,8 +54,7 @@ describe('POST /api/auth/register', () => {
     });
 
     it('renvoie 400 VALIDATION_ERROR avec le détail des champs', async () => {
-        const res = await request(app)
-            .post('/api/auth/register')
+        const res = await post('/api/auth/register')
             .send({ username: 'ab', email: 'pas-un-email', password: 'court' });
 
         expect(res.status).toBe(400);
@@ -67,8 +64,7 @@ describe('POST /api/auth/register', () => {
     });
 
     it('rejette is_admin / isAdmin envoyés dans le body (400, aucun compte créé)', async () => {
-        const res = await request(app)
-            .post('/api/auth/register')
+        const res = await post('/api/auth/register')
             .send({ ...validUser, is_admin: 1, isAdmin: true });
 
         expect(res.status).toBe(400);
@@ -77,8 +73,7 @@ describe('POST /api/auth/register', () => {
     });
 
     it('renvoie 400 INVALID_JSON sur un body mal formé', async () => {
-        const res = await request(app)
-            .post('/api/auth/register')
+        const res = await post('/api/auth/register')
             .set('Content-Type', 'application/json')
             .send('{ pas du json');
 
@@ -90,8 +85,7 @@ describe('POST /api/auth/register', () => {
 describe('POST /api/auth/login', () => {
     it('connecte avec les bons identifiants', async () => {
         await registerUser();
-        const res = await request(app)
-            .post('/api/auth/login')
+        const res = await post('/api/auth/login')
             .send({ email: validUser.email, password: validUser.password });
 
         expect(res.status).toBe(200);
@@ -102,8 +96,7 @@ describe('POST /api/auth/login', () => {
 
     it('refuse un mauvais mot de passe (401 INVALID_CREDENTIALS)', async () => {
         await registerUser();
-        const res = await request(app)
-            .post('/api/auth/login')
+        const res = await post('/api/auth/login')
             .send({ email: validUser.email, password: 'mauvais-mdp' });
 
         expect(res.status).toBe(401);
@@ -112,11 +105,9 @@ describe('POST /api/auth/login', () => {
 
     it('renvoie exactement la même erreur pour un email inconnu et un mauvais mot de passe', async () => {
         await registerUser();
-        const wrongPassword = await request(app)
-            .post('/api/auth/login')
+        const wrongPassword = await post('/api/auth/login')
             .send({ email: validUser.email, password: 'mauvais-mdp' });
-        const unknownEmail = await request(app)
-            .post('/api/auth/login')
+        const unknownEmail = await post('/api/auth/login')
             .send({ email: 'inconnu@example.com', password: 'mauvais-mdp' });
 
         expect(unknownEmail.status).toBe(wrongPassword.status);
@@ -124,7 +115,7 @@ describe('POST /api/auth/login', () => {
     });
 
     it('renvoie 400 VALIDATION_ERROR si des champs manquent', async () => {
-        const res = await request(app).post('/api/auth/login').send({});
+        const res = await post('/api/auth/login').send({});
 
         expect(res.status).toBe(400);
         expect(res.body.error.code).toBe('VALIDATION_ERROR');

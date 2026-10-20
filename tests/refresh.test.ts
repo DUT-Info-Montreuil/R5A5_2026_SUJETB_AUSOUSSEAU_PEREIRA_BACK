@@ -4,11 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { app } from '../src/app.js';
 import { db } from '../src/db.js';
 import * as authService from '../src/services/authService.js';
-import { cookieFrom, internalId, loginUser, registerUser, setAdmin, validUser } from './helpers.js';
+import { cookieFrom, internalId, loginUser, post, registerUser, setAdmin, validUser } from './helpers.js';
 
 function refresh(cookie?: string) {
-    const req = request(app).post('/api/auth/refresh');
-    return cookie ? req.set('Cookie', cookie) : req;
+    return post('/api/auth/refresh', cookie ? [cookie] : []);
 }
 
 function me(accessToken: string) {
@@ -17,7 +16,7 @@ function me(accessToken: string) {
 
 describe('cookie de refresh', () => {
     it('est HttpOnly, limité à /api/auth, 30 jours, et n\'apparaît jamais dans le corps', async () => {
-        const res = await request(app).post('/api/auth/register').send(validUser);
+        const res = await post('/api/auth/register').send(validUser);
         const setCookie = (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('refresh_token='))!;
 
         expect(setCookie).toMatch(/; HttpOnly/);
@@ -67,7 +66,7 @@ describe('POST /api/auth/refresh', () => {
         expect(asCookie.status).toBe(401);
         expect(asCookie.body.error.code).toBe('INVALID_TOKEN');
 
-        const asHeader = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${accessToken}`);
+        const asHeader = await post('/api/auth/refresh').set('Authorization', `Bearer ${accessToken}`);
         expect(asHeader.status).toBe(401);
     });
 
@@ -111,7 +110,7 @@ describe('POST /api/auth/logout', () => {
     it('révoque le refresh token et supprime le cookie', async () => {
         const { refreshCookie } = await registerUser();
 
-        const res = await request(app).post('/api/auth/logout').set('Cookie', refreshCookie);
+        const res = await post('/api/auth/logout', [refreshCookie]);
         expect(res.status).toBe(204);
         const cleared = (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('refresh_token='))!;
         expect(cleared).toMatch(/^refresh_token=;/);
@@ -122,8 +121,8 @@ describe('POST /api/auth/logout', () => {
     });
 
     it('répond 204 même sans cookie ou avec un jeton invalide', async () => {
-        expect((await request(app).post('/api/auth/logout')).status).toBe(204);
-        expect((await request(app).post('/api/auth/logout').set('Cookie', 'refresh_token=abc')).status).toBe(204);
+        expect((await post('/api/auth/logout')).status).toBe(204);
+        expect((await post('/api/auth/logout', ['refresh_token=abc'])).status).toBe(204);
     });
 });
 

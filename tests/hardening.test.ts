@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { app } from '../src/app.js';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { requestId } from '../src/middlewares/requestId.js';
-import { validUser } from './helpers.js';
+import { post, validUser } from './helpers.js';
 
 const FRONT = 'http://localhost:5173';
 
@@ -51,8 +51,7 @@ describe('CORS', () => {
 
 describe('entrées', () => {
     it('refuse un Content-Type autre que JSON (415)', async () => {
-        const res = await request(app)
-            .post('/api/auth/login')
+        const res = await post('/api/auth/login')
             .set('Content-Type', 'application/x-www-form-urlencoded')
             .send('email=a@b.c&password=x');
 
@@ -61,8 +60,7 @@ describe('entrées', () => {
     });
 
     it('refuse un corps de plus de 100 ko (413)', async () => {
-        const res = await request(app)
-            .post('/api/auth/register')
+        const res = await post('/api/auth/register')
             .send({ ...validUser, username: 'x'.repeat(110_000) });
 
         expect(res.status).toBe(413);

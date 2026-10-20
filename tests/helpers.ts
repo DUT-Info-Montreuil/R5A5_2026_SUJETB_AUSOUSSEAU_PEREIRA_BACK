@@ -1,6 +1,7 @@
 import request, { type Response } from 'supertest';
 import { app } from '../src/app.js';
 import { db } from '../src/db.js';
+import { generateCsrfToken } from '../src/security/csrf.js';
 import * as authService from '../src/services/authService.js';
 
 export const validUser = {
@@ -9,6 +10,17 @@ export const validUser = {
     // 12 caractères minimum, absent des listes de fuites
     password: 'cheval-agrafe-pile-42',
 };
+
+// Paire double-submit valide (cookie + header identiques), comme après GET /api/auth/csrf
+export const CSRF_TOKEN = generateCsrfToken();
+
+/** POST avec le jeton anti-CSRF ; `cookies` s'ajoutent au cookie csrf. */
+export function post(path: string, cookies: string[] = []) {
+    return request(app)
+        .post(path)
+        .set('Cookie', [`csrf=${CSRF_TOKEN}`, ...cookies])
+        .set('X-CSRF-Token', CSRF_TOKEN);
+}
 
 export interface TestSession {
     accessToken: string;
@@ -28,13 +40,13 @@ function toSession(res: Response): TestSession {
 }
 
 export async function registerUser(overrides: Partial<typeof validUser> = {}): Promise<TestSession> {
-    const res = await request(app).post('/api/auth/register').send({ ...validUser, ...overrides });
+    const res = await post('/api/auth/register').send({ ...validUser, ...overrides });
     if (res.status !== 201) throw new Error(`register a échoué : ${res.status} ${JSON.stringify(res.body)}`);
     return toSession(res);
 }
 
 export async function loginUser(email = validUser.email, password = validUser.password): Promise<TestSession> {
-    const res = await request(app).post('/api/auth/login').send({ email, password });
+    const res = await post('/api/auth/login').send({ email, password });
     if (res.status !== 200) throw new Error(`login a échoué : ${res.status} ${JSON.stringify(res.body)}`);
     return toSession(res);
 }

@@ -5,10 +5,12 @@ import { config } from './config.js'; // plante au démarrage si la configuratio
 import { authenticate } from './middlewares/authenticate.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import { httpsOnly } from './middlewares/httpsOnly.js';
+import { originCheck } from './middlewares/originCheck.js';
 import { requestId } from './middlewares/requestId.js';
 import { requireJson } from './middlewares/requireJson.js';
 import { securityHeaders } from './middlewares/securityHeaders.js';
 import { authRoutes } from './routes/authRoutes.js';
+import { csrfProtection } from './security/csrf.js';
 
 export const app: Express = express();
 
@@ -33,7 +35,10 @@ app.use(cookieParser());
 app.use(requireJson);
 app.use(express.json({ limit: config.bodyLimit }));
 // Refus par défaut : un seul garde pour toutes les routes, liste blanche dans security/publicRoutes.ts
+app.use(originCheck);
 app.use(authenticate);
+// Après l'authentification : sans jeton, une route protégée répond 401 avant tout contrôle CSRF
+app.use(csrfProtection);
 
 app.get('/api/health', (req: Request, res: Response) => {
     res.json({ status: 'ok' });
