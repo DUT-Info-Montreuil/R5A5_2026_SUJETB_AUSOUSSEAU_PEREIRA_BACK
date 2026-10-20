@@ -1,7 +1,9 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { config } from '../config.js';
+import { AccessDenied } from '../errors/AccessDenied.js';
 import { AppError } from '../errors/AppError.js';
+import { securityLog } from '../security/securityLog.js';
 
 export function notFoundHandler(req: Request, res: Response): void {
     res.status(404).json({
@@ -16,7 +18,15 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
         return;
     }
 
+    // Seul point de conversion de l'exception métier en statut HTTP
+    if (err instanceof AccessDenied) {
+        securityLog('access_denied', req, { userId: req.user?.publicId });
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: err.message } });
+        return;
+    }
+
     if (err instanceof AppError) {
+        if (err.status === 403) securityLog('forbidden', req, { userId: req.user?.publicId, code: err.code });
         if (err.headers) res.set(err.headers);
         res.status(err.status).json({
             error: {
