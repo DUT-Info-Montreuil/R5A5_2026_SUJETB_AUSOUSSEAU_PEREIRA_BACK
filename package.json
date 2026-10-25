@@ -13,13 +13,13 @@
   },
   "license": "ISC",
   "author": "",
-  "main": "app.js",
+  "main": "src/server.ts",
   "scripts": {
     "test": "vitest run",
-    "dev": "tsx watch --env-file=.env src/server.ts",
-    "build": "tsc",
-    "start": "node dist/app.js",
     "test:watch": "vitest",
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "start": "tsx --env-file=.env src/server.ts",
+    "typecheck": "tsc -p .",
     "seed:admin": "tsx --env-file=.env src/scripts/seedAdmin.ts"
   },
   "dependencies": {
@@ -27,7 +27,12 @@
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
     "jsonwebtoken": "^9.0.3",
+    "pino": "^10.4.0",
+    "socket.io": "^4.8.4",
+    "swagger-ui-express": "^5.0.1",
+    "tsx": "^4.23.15",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -37,8 +42,9 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.20.2",
     "@types/supertest": "^7.2.1",
+    "@types/swagger-ui-express": "^4.1.8",
+    "socket.io-client": "^4.8.4",
     "supertest": "^7.3.0",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   }

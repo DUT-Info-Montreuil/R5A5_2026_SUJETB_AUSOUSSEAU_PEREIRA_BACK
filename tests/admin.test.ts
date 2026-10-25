@@ -1,22 +1,15 @@
-import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { errorHandler } from '../src/middlewares/errorHandler.js';
-import { requireAdmin } from '../src/middlewares/requireAdmin.js';
-import { requireAuth } from '../src/middlewares/requireAuth.js';
+import { app } from './context.js';
 import { registerUser, setAdmin } from './helpers.js';
 
-// Aucune route admin n'existe encore : on monte une route factice
-const testApp = express();
-testApp.get('/admin-only', requireAuth, requireAdmin, (req, res) => {
-    res.json({ ok: true });
-});
-testApp.use(errorHandler);
+// Garde de rôle, testée sur une route admin réelle
+const newGame = { name: 'Rocket League', roles: ['Attaquant', 'Gardien'] };
 
-describe('requireAdmin', () => {
+describe('Garde administrateur', () => {
     it('refuse un utilisateur non admin (403 FORBIDDEN)', async () => {
         const { token } = await registerUser();
-        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`);
+        const res = await request(app).post('/api/games').set('Authorization', `Bearer ${token}`).send(newGame);
 
         expect(res.status).toBe(403);
         expect(res.body.error.code).toBe('FORBIDDEN');
@@ -25,14 +18,13 @@ describe('requireAdmin', () => {
     it('laisse passer un admin', async () => {
         const { token, user } = await registerUser();
         setAdmin(user.id, true);
-        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`);
+        const res = await request(app).post('/api/games').set('Authorization', `Bearer ${token}`).send(newGame);
 
-        expect(res.status).toBe(200);
-        expect(res.body).toEqual({ ok: true });
+        expect(res.status).toBe(201);
     });
 
-    it('refuse sans token (401) : requireAuth passe avant', async () => {
-        const res = await request(testApp).get('/admin-only');
+    it('refuse sans token (401) : l\'authentification passe avant le rôle', async () => {
+        const res = await request(app).post('/api/games').send(newGame);
 
         expect(res.status).toBe(401);
     });
@@ -40,10 +32,8 @@ describe('requireAdmin', () => {
     it('prend en compte immédiatement un admin rétrogradé, même avec un token émis avant', async () => {
         const { token, user } = await registerUser();
         setAdmin(user.id, true);
-        expect((await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`)).status).toBe(200);
-
         setAdmin(user.id, false);
-        const res = await request(testApp).get('/admin-only').set('Authorization', `Bearer ${token}`);
+        const res = await request(app).post('/api/games').set('Authorization', `Bearer ${token}`).send(newGame);
 
         expect(res.status).toBe(403);
         expect(res.body.error.code).toBe('FORBIDDEN');

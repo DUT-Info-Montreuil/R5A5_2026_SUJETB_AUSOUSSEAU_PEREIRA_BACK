@@ -1,17 +1,26 @@
 # Arch Rivals : contrat d'API
 
+> **Référence détaillée** : la description OpenAPI est générée depuis le code (schémas de validation compris) et servie sur
+> `/docs` (Swagger UI) et `/openapi.json`. Ce fichier donne la vue d'ensemble, les droits, le temps réel et les règles de gestion.
+
 ## Conventions
 
-- Toutes les routes sont préfixées par `/api` et échangent du JSON.
+- Toutes les routes sont préfixées par `/api` et échangent du JSON (`Content-Type: application/json`, sinon `415`).
 - Authentification : header `Authorization: Bearer <token>`.
 - Dates au format ISO 8601 (UTC), identifiants numériques.
+- Les champs inconnus dans un corps de requête sont refusés (`400`).
+- Les collections qui peuvent grossir sont paginées : `?limit=` (défaut 20, max 100) et `?offset=`. Réponse : `{ "<liste>": [...], "pagination": { "limit", "offset", "total" } }`.
 - Format d'erreur unique : `{ "error": { "code": "TEAM_FULL", "message": "L'équipe est complète" } }`
 - Codes HTTP :
-  - `400` données invalides
-  - `401` non connecté
+  - `400` requête illisible : JSON cassé, champ manquant, mauvais type, champ inconnu (`VALIDATION_ERROR`, avec `details`)
+  - `401` non connecté, jeton invalide ou expiré
   - `403` connecté mais pas autorisé
   - `404` ressource introuvable
   - `409` conflit avec l'état actuel (équipe complète, inscriptions closes...)
+  - `413` corps de plus de 100 ko, `415` corps qui n'est pas du JSON
+  - `422` valeurs lisibles mais incohérentes entre elles (rôle d'un autre jeu, match nul, rôles en double...)
+  - `429` trop de requêtes (`RATE_LIMITED`) ou trop d'échecs de connexion sur un compte (`TOO_MANY_ATTEMPTS`, header `Retry-After`)
+  - `500` erreur interne, message générique ; le détail est dans les logs, retrouvable par le header `X-Request-Id`
 
 ## Authentification
 
@@ -96,3 +105,36 @@ Un match n'est jouable que si ses deux équipes sont connues (statut `ready`).
 | `team:updated` | Membres de l'équipe | Membre ajouté, parti, rôle modifié, nouveau capitaine |
 | `message:new` | Membres de l'équipe | Nouveau message |
 | `member:kicked` | Le joueur exclu | Exclusion, le front le sort du chat |
+| `team:deleted` | Membres de l'équipe | Le capitaine a supprimé l'équipe |
+| `session:expired` | Le client concerné | Jeton expiré, la connexion va être fermée |
+
+### Connexion Socket.IO
+
+Même origine que l'API. Le token est facultatif : sans token, on est visiteur.
+
+```ts
+const socket = io('http://localhost:3000', { auth: { token } });
+await socket.emitWithAck('tournament:join', tournamentId); // { ok: true }, ouvert à tous
+await socket.emitWithAck('team:join', teamId);             // { ok: true } ou { error: { code, message } }
+socket.emit('tournament:leave', tournamentId);
+socket.emit('team:leave', teamId);
+```
+
+- Token invalide ou expiré : connexion refusée, `connect_error` avec le code (`INVALID_TOKEN`, `TOKEN_EXPIRED`).
+- `team:join` applique les mêmes droits que `GET /api/teams/:id/messages` : membre d'une équipe non éliminée, ou admin.
+- Un membre exclu, parti, ou dont l'équipe est éliminée/supprimée est retiré du salon côté serveur : il ne reçoit plus rien.
+- Le jeton n'est vérifié qu'à la connexion : à son expiration, le serveur envoie `session:expired` puis ferme la connexion. Le client se reconnecte avec un jeton neuf.
+- Après une reconnexion, le serveur voit une nouvelle connexion : le client renvoie ses `tournament:join` / `team:join` à chaque événement `connect`.
+- Une connexion depuis une origine absente de `CORS_ORIGIN` est refusée (les WebSockets échappent au CORS du navigateur).
+- Les écritures passent toujours par HTTP ; le canal temps réel ne fait que notifier.
+
+## Règles de gestion retenues
+
+- Un tournoi accepte au plus 8 équipes ; la clôture exige exactement 8 équipes (`409 NOT_ENOUGH_TEAMS`). L'arbre est tiré au sort.
+- À la clôture, les demandes d'adhésion en attente sont rejetées.
+- Entrer dans une équipe (création ou demande acceptée) annule ses autres demandes en attente dans le tournoi.
+- Au lancement, une équipe est incomplète si elle a moins de 5 joueurs **ou** si un joueur n'a pas de rôle (B-08) : elle perd son premier match par forfait. Si les deux équipes d'un quart sont incomplètes, la plus fournie passe (égalité : la plus ancienne). À faire valider par le commanditaire.
+- Chat d'une équipe éliminée : fermé en lecture et en écriture pour les membres (`409 TEAM_CHAT_CLOSED`), lisible par l'admin. L'admin ne peut écrire que dans une équipe dont il est membre.
+- Le chat est renvoyé du message le plus récent au plus ancien, paginé.
+- Connexion : après chaque échec sur un compte, le compte attend 1 s, puis 2 s, 4 s... (15 min au plus) avant un nouvel essai. Un succès remet le compteur à zéro.
+- Mots de passe : 8 caractères au moins, 72 octets au plus (limite de bcrypt), et les mots de passe les plus fréquents des fuites sont refusés.

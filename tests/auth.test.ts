@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { app } from '../src/app.js';
-import { db } from '../src/db.js';
+import { app } from './context.js';
+import { db } from './context.js';
 import { registerUser, validUser } from './helpers.js';
 
 describe('POST /api/auth/register', () => {
@@ -60,15 +60,14 @@ describe('POST /api/auth/register', () => {
         expect(fields).toEqual(['email', 'password', 'username']);
     });
 
-    it('ignore is_admin / isAdmin envoyés dans le body', async () => {
+    it('refuse les champs inconnus comme is_admin (400), sans créer de compte', async () => {
         const res = await request(app)
             .post('/api/auth/register')
             .send({ ...validUser, is_admin: 1, isAdmin: true });
 
-        expect(res.status).toBe(201);
-        expect(res.body.user.isAdmin).toBe(false);
-        const row = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(res.body.user.id) as { is_admin: number };
-        expect(row.is_admin).toBe(0);
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+        expect(db.prepare('SELECT COUNT(*) AS n FROM users').get()).toEqual({ n: 0 });
     });
 
     it('renvoie 400 INVALID_JSON sur un body mal formé', async () => {

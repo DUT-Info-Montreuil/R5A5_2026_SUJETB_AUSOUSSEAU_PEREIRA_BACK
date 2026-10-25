@@ -8,8 +8,11 @@ export default defineConfig({
         // donc a sa propre base, et le fichier de dev n'est jamais touché
         env: {
             DB_PATH: ':memory:',
-            JWT_SECRET: 'test-secret',
+            RATE_LIMIT_GLOBAL: '100000',
+            RATE_LIMIT_AUTH: '100000',
+            JWT_SECRET: 'test-secret-de-test-assez-long-pour-la-config',
             JWT_EXPIRES_IN: '1h',
+            LOG_LEVEL: 'silent',
         },
     },
 });
