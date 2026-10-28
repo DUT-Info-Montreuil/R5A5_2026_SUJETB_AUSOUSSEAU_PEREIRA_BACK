@@ -1,0 +1,2 @@
+# Faux positif : mot de passe de fixture de test (branche feat/auth, tests/helpers.ts), pas un secret
+f467fae87a6e68c67656f96d67af62c0f491a07b:tests/helpers.ts:generic-api-key:9
