@@ -17,7 +17,7 @@ npm run dev               # API sur http://localhost:3000, doc sur /docs
 npm test                  # vitest, base SQLite en mémoire
 npm run typecheck         # tsc, noEmit
 npm run seed:admin        # crée l'admin depuis .env
-npm audit                 # à chaque intégration (cours 3.12)
+npm audit                 # lancé aussi par la CI GitHub (.github/workflows/ci.yml) à chaque push sur main
 ```
 
 Pas de build : `npm start` exécute le TypeScript avec tsx. Pas de linter : typescript-eslint ne supporte pas encore TypeScript 7.
