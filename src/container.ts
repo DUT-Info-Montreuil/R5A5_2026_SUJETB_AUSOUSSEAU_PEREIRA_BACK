@@ -43,9 +43,9 @@ export function createContainer(db: Database, config: Config, logger: Logger) {
         logger,
     });
     const matchService = new MatchService({ ...repositories, reader, notifier, uow, logger });
-    const tournamentService = new TournamentService({ ...repositories, matchService, reader, uow, logger, randomInt });
+    const tournamentService = new TournamentService({ ...repositories, matchService, reader, notifier, uow, logger, randomInt });
     const teamService = new TeamService({ ...repositories, reader, notifier, uow, logger });
-    const joinRequestService = new JoinRequestService({ ...repositories, teamService, reader, uow, logger });
+    const joinRequestService = new JoinRequestService({ ...repositories, teamService, reader, notifier, uow, logger });
 
     return {
         logger,

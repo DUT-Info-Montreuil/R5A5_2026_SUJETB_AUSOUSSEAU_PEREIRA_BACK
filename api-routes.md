@@ -43,7 +43,8 @@
 |---|---|---|---|---|
 | GET | `/api/tournaments?search=&status=` | Public | B-02 | Rechercher des tournois |
 | GET | `/api/tournaments/:id` | Public | B-02, B-19 | Détail complet : tournoi, équipes avec membres, arbre |
-| POST | `/api/tournaments` | Admin | B-01 | Créer un tournoi (inscriptions ouvertes) |
+| POST | `/api/tournaments` | Admin | B-01 | Créer un tournoi (inscriptions ouvertes), avec une date de clôture prévue facultative |
+| PATCH | `/api/tournaments/:id` | Admin | | Changer la date de clôture prévue (`registrationClosesAt`), tant que les inscriptions sont ouvertes |
 | POST | `/api/tournaments/:id/close` | Admin | B-03, B-12 | Clore les inscriptions et générer l'arbre |
 | POST | `/api/tournaments/:id/start` | Admin | B-04 | Lancer le tournoi, forfaits des équipes incomplètes |
 | GET | `/api/tournaments/:id/matches` | Public | B-02, B-19 | Arbre du tournoi |
@@ -57,7 +58,8 @@ Pendant les inscriptions, `matches` est un tableau vide. Aucune donnée privée 
 | GET | `/api/tournaments/:id/teams` | Public | B-06 | Chercher une équipe dans un tournoi |
 | POST | `/api/tournaments/:id/teams` | Connecté, sans équipe dans ce tournoi | B-05, B-07 | Créer une équipe et en devenir capitaine |
 | GET | `/api/teams/:id` | Public | | Détail d'une équipe |
-| PATCH | `/api/teams/:id` | Capitaine | B-09 | Renommer l'équipe |
+| PATCH | `/api/teams/:id` | Capitaine | B-09 | Renommer l'équipe (`name`), l'ouvrir ou la fermer aux demandes (`visibility`: `open` / `private`) |
+| GET | `/api/me/teams` | Connecté | | Mes équipes, chacune avec son tournoi (paginé) |
 | DELETE | `/api/teams/:id` | Capitaine | B-10 | Supprimer l'équipe (membres, demandes et messages supprimés en cascade) |
 | POST | `/api/teams/:id/transfer-captaincy` | Capitaine | B-09 | Passer la main à un membre |
 | PATCH | `/api/teams/:id/members/:userId` | Capitaine | B-08, B-09 | Attribuer un rôle de jeu |
@@ -79,6 +81,9 @@ Règles :
 | POST | `/api/join-requests/:id/accept` | Capitaine | B-08, B-10 | Accepter (refusé si l'équipe a déjà 5 membres) |
 | POST | `/api/join-requests/:id/reject` | Capitaine | B-10 | Refuser |
 | DELETE | `/api/join-requests/:id` | Auteur de la demande | | Annuler sa demande |
+| GET | `/api/me/join-requests?status=` | Connecté | | Mes demandes, filtrables par statut (paginé) |
+
+Une demande renvoie aussi `tournamentId` et `team: { id, name }`. Une équipe privée refuse les nouvelles demandes (`409 TEAM_PRIVATE`).
 
 ## Matchs
 
@@ -86,6 +91,7 @@ Règles :
 |---|---|---|---|---|
 | POST | `/api/matches/:id/result` | Admin | B-13, B-14 | Saisir le résultat, le gagnant avance |
 | POST | `/api/matches/:id/forfeit` | Admin | B-15 | Déclarer une équipe forfait, l'adversaire est qualifié |
+| PATCH | `/api/matches/:id` | Admin | | Fixer l'horaire prévu (`scheduledAt`, `null` l'efface), pas sur un match joué |
 
 Un match n'est jouable que si ses deux équipes sont connues (statut `ready`).
 
@@ -95,6 +101,16 @@ Un match n'est jouable que si ses deux équipes sont connues (statut `ready`).
 |---|---|---|---|---|
 | GET | `/api/teams/:id/messages` | Membre, ou admin | B-16, B-18 | Historique des messages |
 | POST | `/api/teams/:id/messages` | Membre, équipe non éliminée | B-16, B-18 | Envoyer un message |
+| POST | `/api/teams/:id/messages/read` | Membre | | Marquer lu jusqu'à `messageId` ; le repère ne recule jamais |
+| GET | `/api/me/unread` | Connecté | | `{ teams: [{ teamId, unread, lastReadMessageId }] }` pour mes équipes encore en lice |
+
+`unread` compte les messages des autres membres plus récents que le repère (tous, si `lastReadMessageId` est `null`).
+
+## Profil
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| GET | `/api/users/:id/stats` | Public | Tournois joués, matchs joués et gagnés, titres ; `history` paginé des tournois terminés avec le résultat (`champion`, `final`, `semi`, `quarter`) |
 
 ## Événements temps réel
 
@@ -107,6 +123,10 @@ Un match n'est jouable que si ses deux équipes sont connues (statut `ready`).
 | `member:kicked` | Le joueur exclu | Exclusion, le front le sort du chat |
 | `team:deleted` | Membres de l'équipe | Le capitaine a supprimé l'équipe |
 | `session:expired` | Le client concerné | Jeton expiré, la connexion va être fermée |
+| `joinRequest:new` | Le capitaine de l'équipe | Nouvelle demande d'adhésion |
+| `joinRequest:updated` | L'auteur de la demande | Acceptée, refusée, rejetée à la clôture, annulée (par lui, ou parce qu'il est entré dans une autre équipe) |
+
+Les événements destinés à un joueur précis passent par son salon personnel, rejoint automatiquement à la connexion avec un token.
 
 ### Connexion Socket.IO
 
@@ -136,5 +156,7 @@ socket.emit('team:leave', teamId);
 - Au lancement, une équipe est incomplète si elle a moins de 5 joueurs **ou** si un joueur n'a pas de rôle (B-08) : elle perd son premier match par forfait. Si les deux équipes d'un quart sont incomplètes, la plus fournie passe (égalité : la plus ancienne). À faire valider par le commanditaire.
 - Chat d'une équipe éliminée : fermé en lecture et en écriture pour les membres (`409 TEAM_CHAT_CLOSED`), lisible par l'admin. L'admin ne peut écrire que dans une équipe dont il est membre.
 - Le chat est renvoyé du message le plus récent au plus ancien, paginé.
+- `registrationClosesAt` et `scheduledAt` sont indicatifs : la clôture et les résultats restent des actions de l'admin.
+- Une équipe privée garde ses demandes déjà en attente : le capitaine peut encore les accepter.
 - Connexion : après chaque échec sur un compte, le compte attend 1 s, puis 2 s, 4 s... (15 min au plus) avant un nouvel essai. Un succès remet le compteur à zéro.
 - Mots de passe : 8 caractères au moins, 72 octets au plus (limite de bcrypt), et les mots de passe les plus fréquents des fuites sont refusés.

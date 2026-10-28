@@ -5,6 +5,7 @@ import {
     nextMatchSlot,
     opponentOf,
     planBracket,
+    resultOf,
     startForfeitWinner,
     winnerByScore,
     type Match,
@@ -15,7 +16,7 @@ import { ConflictError, RuleViolationError, TooManyAttemptsError } from '../../s
 function match(overrides: Partial<Match> = {}): Match {
     return {
         id: 1, tournamentId: 1, round: 1, position: 1, teamAId: 10, teamBId: 20,
-        scoreA: null, scoreB: null, winnerId: null, isForfeit: false, status: 'ready', validatedAt: null,
+        scoreA: null, scoreB: null, winnerId: null, isForfeit: false, status: 'ready', validatedAt: null, scheduledAt: null,
         ...overrides,
     };
 }
@@ -25,7 +26,7 @@ function member(userId: number, joinedAt: string, withRole = true): TeamMember {
 }
 
 function team(members: TeamMember[]): Team {
-    return { id: 1, tournamentId: 1, name: 'Equipe', isEliminated: false, createdAt: '', members };
+    return { id: 1, tournamentId: 1, name: 'Equipe', isEliminated: false, visibility: 'open', createdAt: '', members };
 }
 
 describe('Arbre (B-12, B-14)', () => {
@@ -110,5 +111,18 @@ describe('Freinage des connexions par compte', () => {
         throttle.recordFailure('alice@example.com');
         now = 4000;
         throttle.assertAllowed('alice@example.com');
+    });
+});
+
+describe('Résultat d\'une équipe dans un tournoi terminé (profil)', () => {
+    const quarter = match({ id: 1, round: 1, teamAId: 10, teamBId: 20, winnerId: 10, status: 'finished' });
+    const semi = match({ id: 2, round: 2, teamAId: 10, teamBId: 30, winnerId: 10, status: 'finished' });
+    const final = match({ id: 3, round: 3, teamAId: 10, teamBId: 40, winnerId: 40, status: 'finished' });
+
+    it('le dernier match joué donne le tour atteint', () => {
+        expect(resultOf([quarter, semi, final], 20)).toBe('quarter');
+        expect(resultOf([quarter, semi, final], 30)).toBe('semi');
+        expect(resultOf([quarter, semi, final], 10)).toBe('final');
+        expect(resultOf([quarter, semi, final], 40)).toBe('champion');
     });
 });

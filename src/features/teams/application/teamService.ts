@@ -1,11 +1,11 @@
-import type { Logger, UnitOfWork } from '../../../shared/application/ports.js';
+import type { Logger, Page, Paginated, UnitOfWork } from '../../../shared/application/ports.js';
 import type { RealtimeNotifier } from '../../../shared/application/realtimeNotifier.js';
 import { ConflictError, RuleViolationError } from '../../../shared/domain/errors.js';
 import type { GameRepository } from '../../games/application/ports.js';
 import type { TournamentReader } from '../../tournaments/application/tournamentReader.js';
 import { BRACKET_SIZE } from '../../tournaments/domain/bracket.js';
-import { assertRegistrationOpen } from '../../tournaments/domain/tournament.js';
-import { assertCanKick, assertCaptain, assertMember, assertTargetMember, successorOf, type Team } from '../domain/team.js';
+import { assertRegistrationOpen, type Tournament } from '../../tournaments/domain/tournament.js';
+import { assertCanKick, assertCaptain, assertMember, assertTargetMember, successorOf, type Team, type TeamVisibility } from '../domain/team.js';
 import type { JoinRequestRepository, TeamRepository } from './ports.js';
 
 export class TeamService {
@@ -41,6 +41,12 @@ export class TeamService {
         return this.teams.findByTournament(tournamentId, search);
     }
 
+    /** Les équipes du joueur connecté, avec leur tournoi. */
+    listMine(userId: number, page: Page): Paginated<{ team: Team; tournament: Tournament }> {
+        const result = this.teams.findByUser(userId, page);
+        return { items: result.items.map((team) => ({ team, tournament: this.reader.requireTournament(team.tournamentId) })), total: result.total };
+    }
+
     get(id: number): Team {
         return this.reader.requireTeam(id).team;
     }
@@ -54,17 +60,20 @@ export class TeamService {
                 throw new ConflictError('TOURNAMENT_FULL', `Ce tournoi a déjà ${BRACKET_SIZE} équipes`);
             }
             const created = this.teams.create(tournamentId, name, userId);
-            this.joinRequests.cancelPendingOfUserInTournament(userId, tournamentId);
-            return created;
+            return { ...created, cancelled: this.joinRequests.cancelPendingOfUserInTournament(userId, tournamentId) };
         });
         this.logger.info('team_created', { team: team.id, tournament: tournamentId, user: userId });
+        for (const request of team.cancelled) this.notifier.joinRequestUpdated(request);
         return this.publish(team.id, tournamentId);
     }
 
-    /** B-09 */
-    rename(teamId: number, userId: number, name: string): Team {
+    /** B-09 : renommer ; ouvrir ou fermer l'équipe aux demandes d'adhésion. */
+    update(teamId: number, userId: number, changes: { name?: string; visibility?: TeamVisibility }): Team {
         const { tournament } = this.asCaptain(teamId, userId);
-        this.teams.rename(teamId, name);
+        this.uow.run(() => {
+            if (changes.name !== undefined) this.teams.rename(teamId, changes.name);
+            if (changes.visibility !== undefined) this.teams.setVisibility(teamId, changes.visibility);
+        });
         return this.publish(teamId, tournament.id);
     }
 

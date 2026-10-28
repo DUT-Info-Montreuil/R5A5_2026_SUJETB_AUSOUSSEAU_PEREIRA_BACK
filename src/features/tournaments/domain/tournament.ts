@@ -12,6 +12,7 @@ export interface Tournament {
     teamCount: number;
     createdBy: number;
     createdAt: string;
+    registrationClosesAt: string | null;
     closedAt: string | null;
     startedAt: string | null;
     finishedAt: string | null;

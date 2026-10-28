@@ -11,11 +11,17 @@ export interface TeamMember {
     joinedAt: string;
 }
 
+export const TEAM_VISIBILITIES = ['open', 'private'] as const;
+
+export type TeamVisibility = (typeof TEAM_VISIBILITIES)[number];
+
 export interface Team {
     id: number;
     tournamentId: number;
     name: string;
     isEliminated: boolean;
+    /** Une équipe privée ne reçoit plus de demandes d'adhésion. */
+    visibility: TeamVisibility;
     createdAt: string;
     members: TeamMember[];
 }
@@ -25,6 +31,8 @@ export type JoinRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled
 export interface JoinRequest {
     id: number;
     teamId: number;
+    teamName: string;
+    tournamentId: number;
     user: { id: number; username: string };
     status: JoinRequestStatus;
     createdAt: string;
@@ -67,6 +75,16 @@ export function assertNotFull(team: Team): void {
     if (team.members.length >= TEAM_SIZE) {
         throw new ConflictError('TEAM_FULL', `L'équipe est complète (${TEAM_SIZE} joueurs)`);
     }
+}
+
+export function assertOpenToRequests(team: Team): void {
+    if (team.visibility === 'private') {
+        throw new ConflictError('TEAM_PRIVATE', 'Cette équipe n\'accepte pas de demandes d\'adhésion');
+    }
+}
+
+export function captainOf(team: Team): TeamMember | undefined {
+    return team.members.find((m) => m.isCaptain);
 }
 
 /** B-04 + B-08 : une équipe au complet a cinq joueurs, chacun avec un rôle de jeu. */

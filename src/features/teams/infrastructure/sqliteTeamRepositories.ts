@@ -2,13 +2,14 @@ import type { Page, Paginated } from '../../../shared/application/ports.js';
 import { ConflictError } from '../../../shared/domain/errors.js';
 import { isUniqueViolation, SQL_NOW, type Database } from '../../../shared/infrastructure/database.js';
 import type { JoinRequestRepository, TeamRepository } from '../application/ports.js';
-import type { JoinRequest, JoinRequestStatus, Team, TeamMember } from '../domain/team.js';
+import type { JoinRequest, JoinRequestStatus, Team, TeamMember, TeamVisibility } from '../domain/team.js';
 
 interface TeamRow {
     id: number;
     tournament_id: number;
     name: string;
     is_eliminated: 0 | 1;
+    visibility: TeamVisibility;
     created_at: string;
 }
 
@@ -25,6 +26,8 @@ interface MemberRow {
 interface JoinRequestRow {
     id: number;
     team_id: number;
+    team_name: string;
+    tournament_id: number;
     user_id: number;
     username: string;
     status: JoinRequestStatus;
@@ -48,6 +51,7 @@ function toTeam(row: TeamRow, members: MemberRow[]): Team {
         tournamentId: row.tournament_id,
         name: row.name,
         isEliminated: row.is_eliminated === 1,
+        visibility: row.visibility,
         createdAt: row.created_at,
         members: members.filter((m) => m.team_id === row.id).map(toMember),
     };
@@ -57,6 +61,8 @@ function toJoinRequest(row: JoinRequestRow): JoinRequest {
     return {
         id: row.id,
         teamId: row.team_id,
+        teamName: row.team_name,
+        tournamentId: row.tournament_id,
         user: { id: row.user_id, username: row.username },
         status: row.status,
         createdAt: row.created_at,
@@ -105,6 +111,24 @@ export class SqliteTeamRepository implements TeamRepository {
         return rows.map((row) => toTeam(row, members));
     }
 
+    findByUser(userId: number, page: Page): Paginated<Team> {
+        const rows = this.db
+            .prepare<[number, number, number], TeamRow>(`
+                SELECT t.* FROM teams t
+                JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
+                ORDER BY t.created_at DESC, t.id DESC LIMIT ? OFFSET ?`)
+            .all(userId, page.limit, page.offset);
+        const total = this.db
+            .prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM team_members WHERE user_id = ?')
+            .get(userId)!.n;
+        const members = this.db
+            .prepare<[number], MemberRow>(
+                `${SELECT_MEMBERS} WHERE tm.team_id IN (SELECT team_id FROM team_members WHERE user_id = ?) ORDER BY tm.joined_at, tm.user_id`,
+            )
+            .all(userId);
+        return { items: rows.map((row) => toTeam(row, members)), total };
+    }
+
     countByTournament(tournamentId: number): number {
         return this.db.prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM teams WHERE tournament_id = ?').get(tournamentId)!.n;
     }
@@ -141,6 +165,10 @@ export class SqliteTeamRepository implements TeamRepository {
         }
     }
 
+    setVisibility(id: number, visibility: TeamVisibility): void {
+        this.db.prepare<[string, number]>('UPDATE teams SET visibility = ? WHERE id = ?').run(visibility, id);
+    }
+
     remove(id: number): void {
         this.db.prepare<[number]>('DELETE FROM teams WHERE id = ?').run(id);
     }
@@ -174,7 +202,11 @@ export class SqliteTeamRepository implements TeamRepository {
     }
 }
 
-const SELECT_REQUESTS = 'SELECT jr.*, u.username FROM join_requests jr JOIN users u ON u.id = jr.user_id';
+const SELECT_REQUESTS = `
+    SELECT jr.*, u.username, t.name AS team_name, t.tournament_id
+    FROM join_requests jr
+    JOIN users u ON u.id = jr.user_id
+    JOIN teams t ON t.id = jr.team_id`;
 
 export class SqliteJoinRequestRepository implements JoinRequestRepository {
     private readonly db: Database;
@@ -200,6 +232,18 @@ export class SqliteJoinRequestRepository implements JoinRequestRepository {
         return { items: rows.map(toJoinRequest), total };
     }
 
+    findByUser(userId: number, status: JoinRequestStatus | undefined, page: Page): Paginated<JoinRequest> {
+        const params = { userId, status: status ?? null };
+        const filter = 'WHERE jr.user_id = @userId AND (@status IS NULL OR jr.status = @status)';
+        const rows = this.db
+            .prepare<typeof params & Page, JoinRequestRow>(
+                `${SELECT_REQUESTS} ${filter} ORDER BY jr.created_at DESC, jr.id DESC LIMIT @limit OFFSET @offset`,
+            )
+            .all({ ...params, ...page });
+        const total = this.db.prepare<typeof params, { n: number }>(`SELECT COUNT(*) AS n FROM join_requests jr ${filter}`).get(params)!.n;
+        return { items: rows.map(toJoinRequest), total };
+    }
+
     create(teamId: number, userId: number): JoinRequest {
         try {
             const { id } = this.db
@@ -218,19 +262,23 @@ export class SqliteJoinRequestRepository implements JoinRequestRepository {
         this.db.prepare<[string, number]>(`UPDATE join_requests SET status = ?, decided_at = ${SQL_NOW} WHERE id = ?`).run(status, id);
     }
 
-    cancelPendingOfUserInTournament(userId: number, tournamentId: number): void {
-        this.db
-            .prepare<[number, number]>(`
+    cancelPendingOfUserInTournament(userId: number, tournamentId: number): JoinRequest[] {
+        const ids = this.db
+            .prepare<[number, number], { id: number }>(`
                 UPDATE join_requests SET status = 'cancelled', decided_at = ${SQL_NOW}
-                WHERE user_id = ? AND status = 'pending' AND team_id IN (SELECT id FROM teams WHERE tournament_id = ?)`)
-            .run(userId, tournamentId);
+                WHERE user_id = ? AND status = 'pending' AND team_id IN (SELECT id FROM teams WHERE tournament_id = ?)
+                RETURNING id`)
+            .all(userId, tournamentId);
+        return ids.map(({ id }) => this.findById(id)!);
     }
 
-    rejectPendingInTournament(tournamentId: number): void {
-        this.db
-            .prepare<[number]>(`
+    rejectPendingInTournament(tournamentId: number): JoinRequest[] {
+        const ids = this.db
+            .prepare<[number], { id: number }>(`
                 UPDATE join_requests SET status = 'rejected', decided_at = ${SQL_NOW}
-                WHERE status = 'pending' AND team_id IN (SELECT id FROM teams WHERE tournament_id = ?)`)
-            .run(tournamentId);
+                WHERE status = 'pending' AND team_id IN (SELECT id FROM teams WHERE tournament_id = ?)
+                RETURNING id`)
+            .all(tournamentId);
+        return ids.map(({ id }) => this.findById(id)!);
     }
 }

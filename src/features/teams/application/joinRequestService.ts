@@ -1,8 +1,9 @@
 import type { Logger, Page, Paginated, UnitOfWork } from '../../../shared/application/ports.js';
+import type { RealtimeNotifier } from '../../../shared/application/realtimeNotifier.js';
 import { AccessDeniedError, NotFoundError } from '../../../shared/domain/errors.js';
 import type { TournamentReader } from '../../tournaments/application/tournamentReader.js';
 import { assertRegistrationOpen } from '../../tournaments/domain/tournament.js';
-import { assertCaptain, assertNotFull, assertPending, type JoinRequest } from '../domain/team.js';
+import { assertCaptain, assertNotFull, assertOpenToRequests, assertPending, captainOf, type JoinRequest, type JoinRequestStatus } from '../domain/team.js';
 import type { JoinRequestRepository, TeamRepository } from './ports.js';
 import type { TeamService } from './teamService.js';
 
@@ -11,6 +12,7 @@ export class JoinRequestService {
     private readonly teams: TeamRepository;
     private readonly teamService: TeamService;
     private readonly reader: TournamentReader;
+    private readonly notifier: RealtimeNotifier;
     private readonly uow: UnitOfWork;
     private readonly logger: Logger;
 
@@ -19,6 +21,7 @@ export class JoinRequestService {
         teams: TeamRepository;
         teamService: TeamService;
         reader: TournamentReader;
+        notifier: RealtimeNotifier;
         uow: UnitOfWork;
         logger: Logger;
     }) {
@@ -26,6 +29,7 @@ export class JoinRequestService {
         this.teams = deps.teams;
         this.teamService = deps.teamService;
         this.reader = deps.reader;
+        this.notifier = deps.notifier;
         this.uow = deps.uow;
         this.logger = deps.logger;
     }
@@ -36,7 +40,15 @@ export class JoinRequestService {
         assertRegistrationOpen(tournament);
         this.teamService.assertNotInTournament(tournament.id, userId);
         assertNotFull(team);
-        return this.joinRequests.create(teamId, userId);
+        assertOpenToRequests(team);
+        const request = this.joinRequests.create(teamId, userId);
+        this.notifier.joinRequestCreated(request, captainOf(team)!.userId);
+        return request;
+    }
+
+    /** Les demandes du joueur connecté, pour savoir où il a déjà postulé. */
+    listMine(userId: number, status: JoinRequestStatus | undefined, page: Page): Paginated<JoinRequest> {
+        return this.joinRequests.findByUser(userId, status, page);
     }
 
     /** B-10 : seul le capitaine voit les demandes. */
@@ -49,23 +61,27 @@ export class JoinRequestService {
     /** B-08 / B-10 : refusé si l'équipe a déjà 5 membres. */
     accept(requestId: number, userId: number): JoinRequest {
         const { request, tournament } = this.asCaptainOf(requestId, userId);
-        this.uow.run(() => {
+        const cancelled = this.uow.run(() => {
             this.teamService.assertNotInTournament(tournament.id, request.user.id);
             assertNotFull(this.teams.findById(request.teamId)!);
             this.teams.addMember(request.teamId, tournament.id, request.user.id);
             this.joinRequests.setStatus(request.id, 'accepted');
-            this.joinRequests.cancelPendingOfUserInTournament(request.user.id, tournament.id);
+            return this.joinRequests.cancelPendingOfUserInTournament(request.user.id, tournament.id);
         });
         this.logger.info('join_request_accepted', { join_request: request.id, team: request.teamId, user: request.user.id });
+        const accepted = this.joinRequests.findById(request.id)!;
+        for (const r of [accepted, ...cancelled]) this.notifier.joinRequestUpdated(r);
         this.reader.publishTeam(request.teamId);
         this.reader.publishTournament(tournament.id);
-        return this.joinRequests.findById(request.id)!;
+        return accepted;
     }
 
     reject(requestId: number, userId: number): JoinRequest {
         const { request } = this.asCaptainOf(requestId, userId);
         this.joinRequests.setStatus(request.id, 'rejected');
-        return this.joinRequests.findById(request.id)!;
+        const rejected = this.joinRequests.findById(request.id)!;
+        this.notifier.joinRequestUpdated(rejected);
+        return rejected;
     }
 
     /** Seul l'auteur annule sa demande, pas même le capitaine. */
@@ -76,6 +92,7 @@ export class JoinRequestService {
         }
         assertPending(request);
         this.joinRequests.setStatus(request.id, 'cancelled');
+        this.notifier.joinRequestUpdated(this.joinRequests.findById(request.id)!); // ses autres onglets ou appareils
     }
 
     private requireRequest(id: number): JoinRequest {

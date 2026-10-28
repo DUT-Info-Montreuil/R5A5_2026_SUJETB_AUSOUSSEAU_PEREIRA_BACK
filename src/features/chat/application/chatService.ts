@@ -2,7 +2,9 @@ import type { Page, Paginated } from '../../../shared/application/ports.js';
 import type { RealtimeNotifier } from '../../../shared/application/realtimeNotifier.js';
 import type { TournamentReader } from '../../tournaments/application/tournamentReader.js';
 import { assertCanPost, assertCanReadChat, type Message } from '../domain/message.js';
-import type { MessageRepository } from './ports.js';
+import { NotFoundError } from '../../../shared/domain/errors.js';
+import { assertMember } from '../../teams/domain/team.js';
+import type { MessageRepository, UnreadCount } from './ports.js';
 
 export class ChatService {
     private readonly messages: MessageRepository;
@@ -31,5 +33,18 @@ export class ChatService {
         const message = this.messages.create(teamId, authorId, content);
         this.notifier.messagePosted(message);
         return message;
+    }
+
+    /** Repère de lecture : réservé aux membres, et le message doit être de cette équipe. */
+    markRead(teamId: number, userId: number, messageId: number): void {
+        assertMember(this.reader.requireTeam(teamId).team, userId);
+        if (this.messages.findById(messageId)?.teamId !== teamId) {
+            throw new NotFoundError('MESSAGE_NOT_FOUND', 'Message introuvable dans cette équipe');
+        }
+        this.messages.markRead(teamId, userId, messageId);
+    }
+
+    unread(userId: number): UnreadCount[] {
+        return this.messages.unreadOf(userId);
     }
 }

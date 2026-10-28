@@ -1,6 +1,6 @@
 import type { Page, Paginated } from '../../../shared/application/ports.js';
 import { SQL_NOW, type Database } from '../../../shared/infrastructure/database.js';
-import type { MatchRepository, TournamentRepository } from '../application/ports.js';
+import type { MatchRepository, Participation, TournamentRepository } from '../application/ports.js';
 import type { Match, MatchPlan, MatchStatus, Slot } from '../domain/bracket.js';
 import type { Tournament, TournamentStatus } from '../domain/tournament.js';
 
@@ -13,6 +13,7 @@ interface TournamentRow {
     status: TournamentStatus;
     created_by: number;
     created_at: string;
+    registration_closes_at: string | null;
     closed_at: string | null;
     started_at: string | null;
     finished_at: string | null;
@@ -31,6 +32,7 @@ interface MatchRow {
     is_forfeit: 0 | 1;
     status: MatchStatus;
     validated_at: string | null;
+    scheduled_at: string | null;
 }
 
 function toTournament(row: TournamentRow): Tournament {
@@ -42,6 +44,7 @@ function toTournament(row: TournamentRow): Tournament {
         teamCount: row.team_count,
         createdBy: row.created_by,
         createdAt: row.created_at,
+        registrationClosesAt: row.registration_closes_at,
         closedAt: row.closed_at,
         startedAt: row.started_at,
         finishedAt: row.finished_at,
@@ -62,6 +65,7 @@ function toMatch(row: MatchRow): Match {
         isForfeit: row.is_forfeit === 1,
         status: row.status,
         validatedAt: row.validated_at,
+        scheduledAt: row.scheduled_at,
     };
 }
 
@@ -108,13 +112,31 @@ export class SqliteTournamentRepository implements TournamentRepository {
         return row && toTournament(row);
     }
 
-    create(name: string, gameId: number, createdBy: number): Tournament {
+    create(name: string, gameId: number, createdBy: number, registrationClosesAt: string | null = null): Tournament {
         const { id } = this.db
-            .prepare<[string, number, number], { id: number }>(
-                'INSERT INTO tournaments (name, game_id, created_by) VALUES (?, ?, ?) RETURNING id',
+            .prepare<[string, number, number, string | null], { id: number }>(
+                'INSERT INTO tournaments (name, game_id, created_by, registration_closes_at) VALUES (?, ?, ?, ?) RETURNING id',
             )
-            .get(name, gameId, createdBy)!;
+            .get(name, gameId, createdBy, registrationClosesAt)!;
         return this.findById(id)!;
+    }
+
+    setRegistrationClosesAt(id: number, at: string | null): void {
+        this.db.prepare<[string | null, number]>('UPDATE tournaments SET registration_closes_at = ? WHERE id = ?').run(at, id);
+    }
+
+    findParticipations(userId: number): Participation[] {
+        return this.db
+            .prepare<[number], TournamentRow & { team_id: number }>(`
+                SELECT t.*, g.name AS game_name, tm.team_id,
+                       (SELECT COUNT(*) FROM teams WHERE tournament_id = t.id) AS team_count
+                FROM tournaments t
+                JOIN games g ON g.id = t.game_id
+                JOIN team_members tm ON tm.tournament_id = t.id AND tm.user_id = ?
+                WHERE t.status IN ('in_progress', 'finished')
+                ORDER BY coalesce(t.finished_at, t.started_at) DESC, t.id DESC`)
+            .all(userId)
+            .map((row) => ({ tournament: toTournament(row), teamId: row.team_id }));
     }
 
     setStatus(id: number, status: NextStatus): void {
@@ -166,6 +188,20 @@ export class SqliteMatchRepository implements MatchRepository {
                 SET winner_id = ?, score_a = ?, score_b = ?, is_forfeit = ?, status = 'finished', validated_at = ${SQL_NOW}
                 WHERE id = ?`)
             .run(result.winnerId, result.scoreA, result.scoreB, result.isForfeit ? 1 : 0, id);
+    }
+
+    findInTournamentsOf(userId: number): Match[] {
+        return this.db
+            .prepare<[number], MatchRow>(`
+                SELECT * FROM matches
+                WHERE tournament_id IN (SELECT tournament_id FROM team_members WHERE user_id = ?)
+                ORDER BY tournament_id, round, position`)
+            .all(userId)
+            .map(toMatch);
+    }
+
+    schedule(id: number, at: string | null): void {
+        this.db.prepare<[string | null, number]>('UPDATE matches SET scheduled_at = ? WHERE id = ?').run(at, id);
     }
 
     placeTeam(id: number, slot: Slot, teamId: number): void {

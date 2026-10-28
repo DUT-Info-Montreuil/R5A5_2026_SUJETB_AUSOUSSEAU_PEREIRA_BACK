@@ -68,7 +68,7 @@ y ajouter chaque nouvelle table. Fixtures rapides dans `tests/helpers.ts` (`quic
 
 ## Avancement des exigences
 
-Légende : [x] fait et testé côté API · [ ] à faire. Le front ne branche encore rien.
+Légende : [x] fait et testé côté API · [ ] à faire.
 
 - [x] Socle : auth (JWT HS256, bcrypt, freinage par compte, mots de passe connus refusés), jeux, erreurs centralisées
 - [x] B-01 à B-04 Tournois : création, recherche paginée, clôture, lancement (forfait si < 5 joueurs ou joueur sans rôle)
@@ -76,6 +76,10 @@ Légende : [x] fait et testé côté API · [ ] à faire. Le front ne branche en
 - [x] B-12 à B-15 Compétition : arbre tiré au sort, résultats, progression, forfaits
 - [x] B-16 à B-18 Chat : réservé aux membres, temps réel, exclusion immédiate, fermé après élimination sauf pour l'admin
 - [x] B-19 Suivi en direct (`tournament:updated`, `match:updated`)
+- [x] Besoins du front (`BACK-ATTENDU.md` du dépôt front, hors barème B-xx) : non-lus (`/api/me/unread`), demandes
+  en temps réel (`joinRequest:new/updated`), `/api/me/join-requests`, `/api/me/teams`, `/api/users/:id/stats`,
+  `registrationClosesAt`, `scheduledAt`, `visibility` d'équipe. Colonnes ajoutées après coup : `ADDED_COLUMNS`
+  dans `database.ts` (migration des bases existantes).
 
 Règles de gestion choisies : fin de `api-routes.md`.
 
@@ -84,7 +88,7 @@ Règles de gestion choisies : fin de `api-routes.md`.
 - [x] Journalisation conforme au cours (JSON Lines, champs nommés, request_id propagé, 500 avec pile à part)
 - [x] Doc développeur (`README.md`), doc d'API générée (`/docs`) + `api-routes.md`
 - [ ] Fiches de décision dans `docs/adr/` : squelettes avec les faits, **rédaction à faire par le binôme**
-- [ ] Front React (repo séparé) : encore le template Vite
+- [ ] Front React (repo séparé) : espace joueur branché sur l'API, à finir
 - [ ] Rapport sur l'usage de l'IA (un par équipe, écrit avec nos mots, pas d'« AI slop »)
 - [ ] SQLite → PostgreSQL (cf. commit d2f0edf) : à trancher dans la fiche 0001
 

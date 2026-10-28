@@ -3,13 +3,24 @@ import { route, type AnyRoute } from '../../../shared/infrastructure/http/routin
 import { idParams, idSchema, memberParams, paginationQuery, paginationSchema, toPagination } from '../../../shared/infrastructure/http/schemas.js';
 import type { JoinRequestService } from '../application/joinRequestService.js';
 import type { TeamService } from '../application/teamService.js';
-import type { JoinRequest, Team } from '../domain/team.js';
+import { TEAM_VISIBILITIES, type JoinRequest, type JoinRequestStatus, type Team } from '../domain/team.js';
 
 // --- DTO d'entrée ---
 
 const teamNameBody = z.strictObject({
     name: z.string().trim().min(2, 'Le nom doit faire au moins 2 caractères').max(50),
 });
+
+const updateTeamBody = z
+    .strictObject({
+        name: teamNameBody.shape.name.optional(),
+        visibility: z.enum(TEAM_VISIBILITIES).optional().describe('private : l\'équipe ne reçoit plus de demandes'),
+    })
+    .refine((body) => body.name !== undefined || body.visibility !== undefined, 'Indiquer name ou visibility');
+
+const JOIN_REQUEST_STATUSES = ['pending', 'accepted', 'rejected', 'cancelled'] as const satisfies readonly JoinRequestStatus[];
+
+const myJoinRequestsQuery = paginationQuery.extend({ status: z.enum(JOIN_REQUEST_STATUSES).optional() });
 
 const transferCaptaincyBody = z.strictObject({ userId: idSchema });
 
@@ -24,6 +35,7 @@ export const teamResponse = z.object({
     tournamentId: z.number().int(),
     name: z.string(),
     isEliminated: z.boolean(),
+    visibility: z.enum(TEAM_VISIBILITIES),
     createdAt: z.string(),
     members: z.array(
         z.object({
@@ -42,6 +54,7 @@ export function toTeamResponse(team: Team): z.infer<typeof teamResponse> {
         tournamentId: team.tournamentId,
         name: team.name,
         isEliminated: team.isEliminated,
+        visibility: team.visibility,
         createdAt: team.createdAt,
         members: team.members.map((m) => ({
             userId: m.userId,
@@ -56,16 +69,20 @@ export function toTeamResponse(team: Team): z.infer<typeof teamResponse> {
 const joinRequestResponse = z.object({
     id: z.number().int(),
     teamId: z.number().int(),
+    tournamentId: z.number().int(),
+    team: z.object({ id: z.number().int(), name: z.string() }),
     user: z.object({ id: z.number().int(), username: z.string() }),
-    status: z.enum(['pending', 'accepted', 'rejected', 'cancelled']),
+    status: z.enum(JOIN_REQUEST_STATUSES),
     createdAt: z.string(),
     decidedAt: z.string().nullable(),
 });
 
-function toJoinRequestResponse(request: JoinRequest): z.infer<typeof joinRequestResponse> {
+export function toJoinRequestResponse(request: JoinRequest): z.infer<typeof joinRequestResponse> {
     return {
         id: request.id,
         teamId: request.teamId,
+        tournamentId: request.tournamentId,
+        team: { id: request.teamId, name: request.teamName },
         user: { id: request.user.id, username: request.user.username },
         status: request.status,
         createdAt: request.createdAt,
@@ -127,13 +144,13 @@ export function teamRoutes(teams: TeamService, joinRequests: JoinRequestService)
             method: 'patch',
             path: '/api/teams/:id',
             tag: 'Équipes',
-            summary: 'Renommer l\'équipe (B-09)',
+            summary: 'Renommer l\'équipe (B-09), l\'ouvrir ou la fermer aux demandes d\'adhésion',
             access: 'authenticated',
             params: idParams,
-            body: teamNameBody,
+            body: updateTeamBody,
             response: teamEnvelope,
             errors: { ...CAPTAIN_ERRORS, 409: 'Inscriptions closes ou nom pris (REGISTRATION_CLOSED, TEAM_NAME_TAKEN)' },
-            handle: ({ params, body, user }) => ({ team: toTeamResponse(teams.rename(params.id, user.id, body.name)) }),
+            handle: ({ params, body, user }) => ({ team: toTeamResponse(teams.update(params.id, user.id, body)) }),
         }),
         route({
             method: 'delete',
@@ -218,7 +235,7 @@ export function teamRoutes(teams: TeamService, joinRequests: JoinRequestService)
             response: joinRequestEnvelope,
             errors: {
                 404: 'Équipe introuvable (TEAM_NOT_FOUND)',
-                409: 'Inscriptions closes, déjà dans une équipe, équipe complète ou demande déjà en attente (REGISTRATION_CLOSED, ALREADY_IN_TEAM, TEAM_FULL, REQUEST_ALREADY_PENDING)',
+                409: 'Inscriptions closes, déjà dans une équipe, équipe complète ou privée, demande déjà en attente (REGISTRATION_CLOSED, ALREADY_IN_TEAM, TEAM_FULL, TEAM_PRIVATE, REQUEST_ALREADY_PENDING)',
             },
             handle: ({ params, user }) => ({ joinRequest: toJoinRequestResponse(joinRequests.create(params.id, user.id)) }),
         }),
@@ -235,6 +252,20 @@ export function teamRoutes(teams: TeamService, joinRequests: JoinRequestService)
             handle: ({ params, query, user }) => {
                 const page = joinRequests.listPending(params.id, user.id, query);
                 return { joinRequests: page.items.map(toJoinRequestResponse), pagination: toPagination(query, page.total) };
+            },
+        }),
+        route({
+            method: 'get',
+            path: '/api/me/join-requests',
+            tag: 'Demandes d\'adhésion',
+            summary: 'Mes demandes, filtrables par statut (?status=pending)',
+            access: 'authenticated',
+            query: myJoinRequestsQuery,
+            response: z.object({ joinRequests: z.array(joinRequestResponse), pagination: paginationSchema }),
+            handle: ({ query, user }) => {
+                const { status, ...page } = query;
+                const result = joinRequests.listMine(user.id, status, page);
+                return { joinRequests: result.items.map(toJoinRequestResponse), pagination: toPagination(page, result.total) };
             },
         }),
         route({

@@ -17,6 +17,7 @@ export interface Match {
     isForfeit: boolean;
     status: MatchStatus;
     validatedAt: string | null;
+    scheduledAt: string | null;
 }
 
 export interface MatchPlan {
@@ -63,6 +64,25 @@ export function assertPlayable(match: Match, tournament: Tournament): void {
     if (match.status !== 'ready') {
         throw new ConflictError('MATCH_NOT_READY', 'Les deux équipes de ce match ne sont pas encore connues');
     }
+}
+
+/** L'horaire d'un match déjà joué n'a plus de sens. */
+export function assertSchedulable(match: Match): void {
+    if (match.status === 'finished') throw new ConflictError('MATCH_ALREADY_PLAYED', 'Ce match a déjà un résultat');
+}
+
+export type TournamentResult = 'champion' | 'final' | 'semi' | 'quarter';
+
+const RESULT_BY_ROUND: Record<number, TournamentResult> = { 1: 'quarter', 2: 'semi', 3: 'final' };
+
+/** Profil : jusqu'où une équipe est allée dans un tournoi terminé (son dernier match joué). */
+export function resultOf(matches: Match[], teamId: number): TournamentResult {
+    const last = matches
+        .filter((m) => m.status === 'finished' && (m.teamAId === teamId || m.teamBId === teamId))
+        .sort((x, y) => y.round - x.round)[0];
+    if (!last) return 'quarter';
+    if (last.round === FINAL_ROUND && last.winnerId === teamId) return 'champion';
+    return RESULT_BY_ROUND[last.round]!;
 }
 
 export function winnerByScore(match: Match, scoreA: number, scoreB: number): number {

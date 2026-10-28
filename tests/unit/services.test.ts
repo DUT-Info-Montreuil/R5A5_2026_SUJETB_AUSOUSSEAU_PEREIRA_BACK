@@ -13,6 +13,7 @@ const team: Team = {
     tournamentId: 1,
     name: 'Les Bleus',
     isEliminated: false,
+    visibility: 'open',
     createdAt: '',
     members: [{ userId: 7, username: 'alice', role: null, isCaptain: true, joinedAt: '' }],
 };
@@ -27,6 +28,9 @@ function setup(current: Team) {
             stored.push(message);
             return message;
         },
+        findById: (id) => stored.find((m) => m.id === id),
+        markRead: () => {},
+        unreadOf: () => [],
     };
     const reader = { requireTeam: () => ({ team: current }) } as unknown as TournamentReader;
     const notifier = { messagePosted: (m: Message) => pushed.push(m) } as unknown as RealtimeNotifier;

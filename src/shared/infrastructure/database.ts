@@ -18,7 +18,18 @@ export function openDatabase(dbPath: string): Database {
 export function initSchema(db: Database): void {
     const schema = fs.readFileSync(path.join(process.cwd(), 'sql', 'schema.sqlite.sql'), 'utf-8');
     db.exec(schema); // CREATE ... IF NOT EXISTS : relançable sans risque
+    for (const [table, column, definition] of ADDED_COLUMNS) {
+        const columns = db.prepare<[], { name: string }>(`SELECT name FROM pragma_table_info('${table}')`).all();
+        if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
 }
+
+// Colonnes ajoutées après coup : CREATE TABLE IF NOT EXISTS ne modifie pas une table déjà créée
+const ADDED_COLUMNS = [
+    ['tournaments', 'registration_closes_at', 'TEXT'],
+    ['teams', 'visibility', "TEXT NOT NULL DEFAULT 'open' CHECK (visibility IN ('open', 'private'))"],
+    ['matches', 'scheduled_at', 'TEXT'],
+] as const;
 
 // Même format que les DEFAULT du schéma (ISO 8601 UTC avec millisecondes)
 export const SQL_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";

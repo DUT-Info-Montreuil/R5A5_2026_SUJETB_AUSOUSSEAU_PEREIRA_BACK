@@ -2,8 +2,8 @@ import type { Server } from 'socket.io';
 import type { RealtimeNotifier, TournamentDetail } from '../shared/application/realtimeNotifier.js';
 import type { Message } from '../features/chat/domain/message.js';
 import { toMessageResponse } from '../features/chat/infrastructure/http.js';
-import type { Team } from '../features/teams/domain/team.js';
-import { toTeamResponse } from '../features/teams/infrastructure/http.js';
+import type { JoinRequest, Team } from '../features/teams/domain/team.js';
+import { toJoinRequestResponse, toTeamResponse } from '../features/teams/infrastructure/http.js';
 import type { Match } from '../features/tournaments/domain/bracket.js';
 import { toMatchResponse, toTournamentDetailResponse } from '../features/tournaments/infrastructure/http.js';
 
@@ -57,5 +57,13 @@ export class SocketIoNotifier implements RealtimeNotifier {
 
     messagePosted(message: Message): void {
         this.io?.to(rooms.team(message.teamId)).emit('message:new', toMessageResponse(message));
+    }
+
+    joinRequestCreated(request: JoinRequest, captainId: number): void {
+        this.io?.to(rooms.user(captainId)).emit('joinRequest:new', toJoinRequestResponse(request));
+    }
+
+    joinRequestUpdated(request: JoinRequest): void {
+        this.io?.to(rooms.user(request.user.id)).emit('joinRequest:updated', toJoinRequestResponse(request));
     }
 }

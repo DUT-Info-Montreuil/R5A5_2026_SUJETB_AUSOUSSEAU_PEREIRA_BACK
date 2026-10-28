@@ -132,4 +132,39 @@ describe('Socket.IO', () => {
         // Et il ne peut pas revenir dans le salon
         expect((await join(kickedSocket, 'team:join', team.id)).error?.code).toBe('NOT_TEAM_MEMBER');
     });
+
+    it('demandes d\'adhésion : le capitaine voit la demande arriver, l\'auteur sa réponse, personne d\'autre', async () => {
+        const t = createTournament();
+        const team = createTeam(t.id);
+        const applicant = quickUser();
+        const captainSocket = await client(team.captain);
+        const applicantSocket = await client(applicant);
+        const outsiderSocket = await client(quickUser());
+        const leaked: unknown[] = [];
+        outsiderSocket.on('joinRequest:new', (r) => leaked.push(r));
+        outsiderSocket.on('joinRequest:updated', (r) => leaked.push(r));
+
+        const created = next<{ id: number; team: { id: number } }>(captainSocket, 'joinRequest:new');
+        const res = await request(app).post(`/api/teams/${team.id}/join-requests`).set(...bearer(applicant));
+        expect((await created).team.id).toBe(team.id);
+
+        const updated = next<{ status: string }>(applicantSocket, 'joinRequest:updated');
+        await request(app).post(`/api/join-requests/${res.body.joinRequest.id}/reject`).set(...bearer(team.captain));
+        expect((await updated).status).toBe('rejected');
+
+        await settle();
+        expect(leaked).toEqual([]);
+    });
+
+    it('demandes d\'adhésion : l\'auteur apprend le rejet de sa demande à la clôture', async () => {
+        const t = createTournament();
+        const teams = Array.from({ length: 8 }, () => createTeam(t.id, 5));
+        const applicant = quickUser();
+        container.repositories.joinRequests.create(teams[0]!.id, applicant.id);
+        const socket = await client(applicant);
+
+        const updated = next<{ status: string }>(socket, 'joinRequest:updated');
+        await request(app).post(`/api/tournaments/${t.id}/close`).set(...bearer(t.admin));
+        expect((await updated).status).toBe('rejected');
+    });
 });

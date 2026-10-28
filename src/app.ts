@@ -22,7 +22,7 @@ export function apiRoutes(c: Container): AnyRoute[] {
     return [
         ...userRoutes(c.authService),
         ...gameRoutes(c.gameService),
-        ...tournamentRoutes(c.tournamentService, c.matchService),
+        ...tournamentRoutes(c.tournamentService, c.matchService, c.teamService),
         ...teamRoutes(c.teamService, c.joinRequestService),
         ...chatRoutes(c.chatService),
     ];

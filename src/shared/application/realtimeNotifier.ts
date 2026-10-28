@@ -1,5 +1,5 @@
 import type { Message } from '../../features/chat/domain/message.js';
-import type { Team } from '../../features/teams/domain/team.js';
+import type { JoinRequest, Team } from '../../features/teams/domain/team.js';
 import type { Match } from '../../features/tournaments/domain/bracket.js';
 import type { Tournament } from '../../features/tournaments/domain/tournament.js';
 
@@ -25,4 +25,8 @@ export interface RealtimeNotifier {
     /** B-18 : l'équipe est éliminée, plus personne ne reçoit son flux. */
     teamChatClosed(teamId: number): void;
     messagePosted(message: Message): void;
+    /** Le capitaine voit arriver la demande sans recharger. */
+    joinRequestCreated(request: JoinRequest, captainId: number): void;
+    /** L'auteur apprend que sa demande est acceptée, refusée ou annulée. */
+    joinRequestUpdated(request: JoinRequest): void;
 }

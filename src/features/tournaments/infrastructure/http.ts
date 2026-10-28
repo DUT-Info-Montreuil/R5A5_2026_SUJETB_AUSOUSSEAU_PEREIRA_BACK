@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { TournamentDetail } from '../../../shared/application/realtimeNotifier.js';
 import { route, type AnyRoute } from '../../../shared/infrastructure/http/routing.js';
-import { idParams, idSchema, paginationQuery, paginationSchema, toPagination } from '../../../shared/infrastructure/http/schemas.js';
+import { dateTimeSchema, idParams, idSchema, paginationQuery, paginationSchema, toPagination } from '../../../shared/infrastructure/http/schemas.js';
+import type { TeamService } from '../../teams/application/teamService.js';
 import { teamResponse, toTeamResponse } from '../../teams/infrastructure/http.js';
 import type { MatchService } from '../application/matchService.js';
 import type { TournamentService } from '../application/tournamentService.js';
@@ -13,7 +14,12 @@ import { TOURNAMENT_STATUSES, type Tournament } from '../domain/tournament.js';
 const createTournamentBody = z.strictObject({
     name: z.string().trim().min(3, 'Le nom doit faire au moins 3 caractères').max(100),
     gameId: idSchema,
+    registrationClosesAt: dateTimeSchema.nullable().optional().describe('Date de clôture prévue, indicative'),
 });
+
+const updateTournamentBody = z.strictObject({ registrationClosesAt: dateTimeSchema.nullable() });
+
+const scheduleMatchBody = z.strictObject({ scheduledAt: dateTimeSchema.nullable().describe('null efface l\'horaire') });
 
 const searchTournamentsQuery = paginationQuery.extend({
     search: z.string().trim().min(1).optional(),
@@ -36,6 +42,7 @@ const tournamentResponse = z.object({
     game: z.object({ id: z.number().int(), name: z.string() }),
     teamCount: z.number().int(),
     createdAt: z.string(),
+    registrationClosesAt: z.string().nullable().describe('Clôture prévue, indicative'),
     closedAt: z.string().nullable(),
     startedAt: z.string().nullable(),
     finishedAt: z.string().nullable(),
@@ -54,6 +61,7 @@ export const matchResponse = z.object({
     isForfeit: z.boolean(),
     status: z.enum(['pending', 'ready', 'finished']),
     validatedAt: z.string().nullable(),
+    scheduledAt: z.string().nullable().describe('Horaire prévu'),
 });
 
 // Équipes (8 au plus) et matchs (7) sont bornés par nature : on peut les embarquer dans le détail
@@ -70,6 +78,7 @@ function toTournamentResponse(t: Tournament): z.infer<typeof tournamentResponse>
         game: { id: t.game.id, name: t.game.name },
         teamCount: t.teamCount,
         createdAt: t.createdAt,
+        registrationClosesAt: t.registrationClosesAt,
         closedAt: t.closedAt,
         startedAt: t.startedAt,
         finishedAt: t.finishedAt,
@@ -90,6 +99,7 @@ export function toMatchResponse(m: Match): z.infer<typeof matchResponse> {
         isForfeit: m.isForfeit,
         status: m.status,
         validatedAt: m.validatedAt,
+        scheduledAt: m.scheduledAt,
     };
 }
 
@@ -105,8 +115,93 @@ const detailEnvelope = z.object({ tournament: tournamentDetailResponse });
 const matchEnvelope = z.object({ match: matchResponse });
 const NOT_FOUND = { 404: 'Tournoi introuvable (TOURNAMENT_NOT_FOUND)' } as const;
 
-export function tournamentRoutes(tournaments: TournamentService, matches: MatchService): AnyRoute[] {
+const playerStatsResponse = z.object({
+    tournaments: z.number().int().describe('Tournois lancés ou terminés où le joueur avait une équipe'),
+    matchesPlayed: z.number().int(),
+    matchesWon: z.number().int(),
+    titles: z.number().int(),
+    history: z.array(
+        z.object({
+            tournament: z.object({ id: z.number().int(), name: z.string(), game: z.object({ id: z.number().int(), name: z.string() }) }),
+            finishedAt: z.string(),
+            result: z.enum(['champion', 'final', 'semi', 'quarter']),
+        }),
+    ),
+    pagination: paginationSchema.describe('Pagination de history'),
+});
+
+// Ici plutôt que dans le HTTP des équipes : il a besoin du DTO tournoi, et l'inverse créerait un import circulaire
+function myTeamsRoute(teams: TeamService): AnyRoute {
+    return route({
+        method: 'get',
+        path: '/api/me/teams',
+        tag: 'Équipes',
+        summary: 'Mes équipes, avec leur tournoi, les plus récentes d\'abord',
+        access: 'authenticated',
+        query: paginationQuery,
+        response: z.object({ teams: z.array(teamResponse.extend({ tournament: tournamentResponse })), pagination: paginationSchema }),
+        handle: ({ query, user }) => {
+            const result = teams.listMine(user.id, query);
+            return {
+                teams: result.items.map(({ team, tournament }) => ({ ...toTeamResponse(team), tournament: toTournamentResponse(tournament) })),
+                pagination: toPagination(query, result.total),
+            };
+        },
+    });
+}
+
+export function tournamentRoutes(tournaments: TournamentService, matches: MatchService, teams: TeamService): AnyRoute[] {
     return [
+        myTeamsRoute(teams),
+        route({
+            method: 'get',
+            path: '/api/users/:id/stats',
+            tag: 'Profil',
+            summary: 'Bilan d\'un joueur : tournois, matchs, titres, et historique paginé des tournois terminés',
+            access: 'public',
+            params: idParams,
+            query: paginationQuery,
+            response: playerStatsResponse,
+            errors: { 404: 'Joueur introuvable (USER_NOT_FOUND)' },
+            handle: ({ params, query }) => {
+                const { history, ...stats } = tournaments.playerStats(params.id, query);
+                return {
+                    ...stats,
+                    history: history.items.map(({ tournament, result }) => ({
+                        tournament: { id: tournament.id, name: tournament.name, game: { id: tournament.game.id, name: tournament.game.name } },
+                        finishedAt: tournament.finishedAt!,
+                        result,
+                    })),
+                    pagination: toPagination(query, history.total),
+                };
+            },
+        }),
+        route({
+            method: 'patch',
+            path: '/api/tournaments/:id',
+            tag: 'Tournois',
+            summary: 'Changer la date de clôture prévue (indicative) pendant les inscriptions',
+            access: 'admin',
+            params: idParams,
+            body: updateTournamentBody,
+            response: detailEnvelope,
+            errors: { ...NOT_FOUND, 409: 'Inscriptions plus ouvertes (INVALID_TOURNAMENT_STATUS)' },
+            handle: ({ params, body }) => ({
+                tournament: toTournamentDetailResponse(tournaments.setRegistrationClosesAt(params.id, body.registrationClosesAt)),
+            }),
+        }),
+        route({
+            method: 'patch',
+            path: '/api/matches/:id',
+            tag: 'Matchs',
+            summary: 'Fixer (ou effacer avec null) l\'horaire prévu d\'un match',
+            access: 'admin',
+            params: idParams,
+            body: scheduleMatchBody,
+            response: matchEnvelope,
+            errors: { 404: 'Match introuvable (MATCH_NOT_FOUND)', 409: 'Match déjà joué (MATCH_ALREADY_PLAYED)' },
+            handle: ({ params, body }) => ({ match: toMatchResponse(matches.schedule(params.id, body.scheduledAt)) }),
+        }),
         route({
             method: 'get',
             path: '/api/tournaments',

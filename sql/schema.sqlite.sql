@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
               CHECK (status IN ('registration_open', 'registration_closed', 'in_progress', 'finished')),
   created_by  INTEGER NOT NULL REFERENCES users(id),
   created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  registration_closes_at TEXT, -- indicatif : la clôture reste une action de l'admin
   closed_at   TEXT,
   started_at  TEXT,
   finished_at TEXT
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS teams (
   tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   name          TEXT    NOT NULL CHECK (length(name) BETWEEN 2 AND 50),
   is_eliminated INTEGER NOT NULL DEFAULT 0 CHECK (is_eliminated IN (0, 1)),
+  visibility    TEXT    NOT NULL DEFAULT 'open' CHECK (visibility IN ('open', 'private')),
   created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE (tournament_id, name),
   UNIQUE (id, tournament_id)
@@ -94,6 +96,7 @@ CREATE TABLE IF NOT EXISTS matches (
   status        TEXT    NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'ready', 'finished')),
   validated_at  TEXT,
+  scheduled_at  TEXT,
   UNIQUE (tournament_id, round, position),
   CHECK (team_a_id IS NULL OR team_a_id <> team_b_id),
   CHECK (winner_id IS NULL OR winner_id IN (team_a_id, team_b_id)),
@@ -109,3 +112,11 @@ CREATE TABLE IF NOT EXISTS messages (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_messages_team_date ON messages (team_id, created_at);
+
+-- Dernier message lu par un joueur dans le chat de son équipe
+CREATE TABLE IF NOT EXISTS message_reads (
+  team_id              INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_read_message_id INTEGER NOT NULL,
+  PRIMARY KEY (team_id, user_id)
+) STRICT;

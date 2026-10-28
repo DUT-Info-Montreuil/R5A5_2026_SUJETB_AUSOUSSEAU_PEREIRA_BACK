@@ -5,6 +5,7 @@ import type { TeamRepository } from '../../teams/application/ports.js';
 import { TEAM_SIZE, isComplete } from '../../teams/domain/team.js';
 import {
     assertPlayable,
+    assertSchedulable,
     loserOf,
     nextMatchSlot,
     opponentOf,
@@ -73,6 +74,18 @@ export class MatchService {
         this.broadcast([decision]);
         this.reader.publishTournament(decision.tournamentId);
         return this.matches.findById(matchId)!;
+    }
+
+    /** Horaire prévu, affiché aux joueurs (compte à rebours). `null` l'efface. */
+    schedule(matchId: number, at: string | null): Match {
+        const match = this.matches.findById(matchId);
+        if (!match) throw new NotFoundError('MATCH_NOT_FOUND', 'Match introuvable');
+        assertSchedulable(match);
+        this.matches.schedule(matchId, at);
+        const updated = this.matches.findById(matchId)!;
+        this.notifier.matchUpdated(updated);
+        this.reader.publishTournament(match.tournamentId);
+        return updated;
     }
 
     /**

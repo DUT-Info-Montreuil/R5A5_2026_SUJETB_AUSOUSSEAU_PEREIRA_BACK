@@ -7,6 +7,11 @@ export const idParams = z.object({ id: idSchema });
 
 export const memberParams = z.object({ id: idSchema, userId: idSchema });
 
+/** Date ISO 8601 avec fuseau (« 2026-11-03T18:00:00+01:00 »), stockée en UTC comme les autres dates. */
+export const dateTimeSchema = z.iso
+    .datetime({ offset: true, error: 'Date ISO 8601 attendue, avec fuseau' })
+    .transform((value) => new Date(value).toISOString());
+
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
 
