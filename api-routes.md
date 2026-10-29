@@ -56,10 +56,13 @@ Pendant les inscriptions, `matches` est un tableau vide. Aucune donnée privée 
 | Méthode | Route | Accès | Exigences | Description |
 |---|---|---|---|---|
 | GET | `/api/tournaments/:id/teams` | Public | B-06 | Chercher une équipe dans un tournoi |
+| GET | `/api/teams?free=&search=` | Public | | Chercher une équipe, toutes ou seulement hors tournoi (`free=true`) (paginé) |
+| POST | `/api/teams` | Connecté | | Créer une équipe hors tournoi (`name`, `gameId`) et en devenir capitaine |
+| POST | `/api/teams/:id/register` | Capitaine | | Inscrire une équipe hors tournoi à un tournoi (`tournamentId`) |
 | POST | `/api/tournaments/:id/teams` | Connecté, sans équipe dans ce tournoi | B-05, B-07 | Créer une équipe et en devenir capitaine |
 | GET | `/api/teams/:id` | Public | | Détail d'une équipe |
 | PATCH | `/api/teams/:id` | Capitaine | B-09 | Renommer l'équipe (`name`), l'ouvrir ou la fermer aux demandes (`visibility`: `open` / `private`) |
-| GET | `/api/me/teams` | Connecté | | Mes équipes, chacune avec son tournoi (paginé) |
+| GET | `/api/me/teams` | Connecté | | Mes équipes, chacune avec son tournoi, `null` hors tournoi (paginé) |
 | DELETE | `/api/teams/:id` | Capitaine | B-10 | Supprimer l'équipe (membres, demandes et messages supprimés en cascade) |
 | POST | `/api/teams/:id/transfer-captaincy` | Capitaine | B-09 | Passer la main à un membre |
 | PATCH | `/api/teams/:id/members/:userId` | Capitaine | B-08, B-09 | Attribuer un rôle de jeu |
@@ -71,6 +74,11 @@ Règles :
 - Toute modification d'équipe est refusée (`409`) si les inscriptions ne sont plus ouvertes (B-11).
 - Si le capitaine quitte l'équipe, le membre arrivé le plus tôt devient capitaine (départage par `user_id` en cas d'égalité).
 - Si le capitaine était seul, l'équipe est supprimée.
+- Une équipe a toujours un jeu (`game`). Hors tournoi (`tournamentId: null`), elle se gère comme dans un tournoi aux
+  inscriptions ouvertes : composition, rôles du jeu, demandes, chat.
+- Inscription d'une équipe hors tournoi : inscriptions ouvertes, même jeu (`409 GAME_MISMATCH`), moins de 8 équipes,
+  aucun membre déjà dans une équipe du tournoi (`409 MEMBER_ALREADY_IN_TOURNAMENT`), nom libre dans le tournoi,
+  pas déjà inscrite (`409 TEAM_ALREADY_REGISTERED`). L'équipe garde son identifiant, ses membres, ses messages et ses demandes.
 
 ## Demandes d'adhésion
 
@@ -83,7 +91,7 @@ Règles :
 | DELETE | `/api/join-requests/:id` | Auteur de la demande | | Annuler sa demande |
 | GET | `/api/me/join-requests?status=` | Connecté | | Mes demandes, filtrables par statut (paginé) |
 
-Une demande renvoie aussi `tournamentId` et `team: { id, name }`. Une équipe privée refuse les nouvelles demandes (`409 TEAM_PRIVATE`).
+Une demande renvoie aussi `tournamentId` (`null` hors tournoi) et `team: { id, name }`. Une équipe privée refuse les nouvelles demandes (`409 TEAM_PRIVATE`).
 
 ## Matchs
 
@@ -152,7 +160,8 @@ socket.emit('team:leave', teamId);
 
 - Un tournoi accepte au plus 8 équipes ; la clôture exige exactement 8 équipes (`409 NOT_ENOUGH_TEAMS`). L'arbre est tiré au sort.
 - À la clôture, les demandes d'adhésion en attente sont rejetées.
-- Entrer dans une équipe (création ou demande acceptée) annule ses autres demandes en attente dans le tournoi.
+- Entrer dans une équipe (création, demande acceptée ou inscription de son équipe) annule ses autres demandes en attente dans le tournoi.
+- Hors tournoi, un joueur peut appartenir à plusieurs équipes ; la règle « une équipe par tournoi » s'applique à l'inscription.
 - Au lancement, une équipe est incomplète si elle a moins de 5 joueurs **ou** si un joueur n'a pas de rôle (B-08) : elle perd son premier match par forfait. Si les deux équipes d'un quart sont incomplètes, la plus fournie passe (égalité : la plus ancienne). À faire valider par le commanditaire.
 - Chat d'une équipe éliminée : fermé en lecture et en écriture pour les membres (`409 TEAM_CHAT_CLOSED`), lisible par l'admin. L'admin ne peut écrire que dans une équipe dont il est membre.
 - Le chat est renvoyé du message le plus récent au plus ancien, paginé.

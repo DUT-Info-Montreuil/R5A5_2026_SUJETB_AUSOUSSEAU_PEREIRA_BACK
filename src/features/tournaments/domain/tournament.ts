@@ -25,6 +25,11 @@ export function assertRegistrationOpen(tournament: Tournament): void {
     }
 }
 
+/** Hors tournoi, une équipe se gère comme dans un tournoi aux inscriptions ouvertes. */
+export function assertTeamEditable(tournament: Tournament | null): void {
+    if (tournament) assertRegistrationOpen(tournament);
+}
+
 export function assertStatus(tournament: Tournament, expected: TournamentStatus, message: string): void {
     if (tournament.status !== expected) throw new ConflictError('INVALID_TOURNAMENT_STATUS', message);
 }

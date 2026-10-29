@@ -26,7 +26,7 @@ function member(userId: number, joinedAt: string, withRole = true): TeamMember {
 }
 
 function team(members: TeamMember[]): Team {
-    return { id: 1, tournamentId: 1, name: 'Equipe', isEliminated: false, visibility: 'open', createdAt: '', members };
+    return { id: 1, tournamentId: 1, game: { id: 1, name: 'Jeu' }, name: 'Equipe', isEliminated: false, visibility: 'open', createdAt: '', members };
 }
 
 describe('Arbre (B-12, B-14)', () => {

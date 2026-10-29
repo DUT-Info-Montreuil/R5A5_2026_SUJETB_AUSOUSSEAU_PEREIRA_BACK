@@ -136,14 +136,14 @@ function myTeamsRoute(teams: TeamService): AnyRoute {
         method: 'get',
         path: '/api/me/teams',
         tag: 'Équipes',
-        summary: 'Mes équipes, avec leur tournoi, les plus récentes d\'abord',
+        summary: 'Mes équipes, avec leur tournoi (null hors tournoi), les plus récentes d\'abord',
         access: 'authenticated',
         query: paginationQuery,
-        response: z.object({ teams: z.array(teamResponse.extend({ tournament: tournamentResponse })), pagination: paginationSchema }),
+        response: z.object({ teams: z.array(teamResponse.extend({ tournament: tournamentResponse.nullable() })), pagination: paginationSchema }),
         handle: ({ query, user }) => {
             const result = teams.listMine(user.id, query);
             return {
-                teams: result.items.map(({ team, tournament }) => ({ ...toTeamResponse(team), tournament: toTournamentResponse(tournament) })),
+                teams: result.items.map(({ team, tournament }) => ({ ...toTeamResponse(team), tournament: tournament && toTournamentResponse(tournament) })),
                 pagination: toPagination(query, result.total),
             };
         },

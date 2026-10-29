@@ -22,6 +22,39 @@ export function initSchema(db: Database): void {
         const columns = db.prepare<[], { name: string }>(`SELECT name FROM pragma_table_info('${table}')`).all();
         if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
+    migrateFreeTeams(db, schema);
+}
+
+/**
+ * Équipes hors tournoi : SQLite ne sait pas lever un NOT NULL, on reconstruit teams et team_members
+ * (procédure de la doc SQLite : clés étrangères coupées, renommage sans réécrire les références des autres tables).
+ */
+function migrateFreeTeams(db: Database, schema: string): void {
+    const column = db.prepare<[], { notnull: number }>("SELECT \"notnull\" FROM pragma_table_info('teams') WHERE name = 'tournament_id'").get();
+    if (column?.notnull !== 1) return;
+    db.pragma('foreign_keys = OFF');
+    db.pragma('legacy_alter_table = ON');
+    try {
+        db.transaction(() => {
+            db.exec(`
+                DROP INDEX uq_one_captain_per_team;
+                ALTER TABLE team_members RENAME TO old_team_members;
+                ALTER TABLE teams RENAME TO old_teams;`);
+            db.exec(schema);
+            db.exec(`
+                INSERT INTO teams (id, tournament_id, game_id, name, is_eliminated, visibility, created_at)
+                    SELECT o.id, o.tournament_id, tr.game_id, o.name, o.is_eliminated, o.visibility, o.created_at
+                    FROM old_teams o JOIN tournaments tr ON tr.id = o.tournament_id;
+                INSERT INTO team_members (team_id, user_id, tournament_id, role_id, is_captain, joined_at)
+                    SELECT team_id, user_id, tournament_id, role_id, is_captain, joined_at FROM old_team_members;
+                DROP TABLE old_team_members;
+                DROP TABLE old_teams;`);
+            if ((db.pragma('foreign_key_check') as unknown[]).length > 0) throw new Error('Migration des équipes : clés étrangères incohérentes');
+        })();
+    } finally {
+        db.pragma('legacy_alter_table = OFF');
+        db.pragma('foreign_keys = ON');
+    }
 }
 
 // Colonnes ajoutées après coup : CREATE TABLE IF NOT EXISTS ne modifie pas une table déjà créée

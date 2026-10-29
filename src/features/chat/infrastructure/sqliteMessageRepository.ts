@@ -76,9 +76,9 @@ export class SqliteMessageRepository implements MessageRepository {
                           AND m.author_id IS NOT @userId) AS unread
                 FROM team_members tm
                 JOIN teams t ON t.id = tm.team_id AND t.is_eliminated = 0
-                JOIN tournaments tr ON tr.id = t.tournament_id AND tr.status <> 'finished'
+                LEFT JOIN tournaments tr ON tr.id = t.tournament_id
                 LEFT JOIN message_reads mr ON mr.team_id = tm.team_id AND mr.user_id = tm.user_id
-                WHERE tm.user_id = @userId
+                WHERE tm.user_id = @userId AND tr.status IS NOT 'finished'
                 ORDER BY tm.team_id`)
             .all({ userId })
             .map((row) => ({ teamId: row.team_id, unread: row.unread, lastReadMessageId: row.last_read_message_id }));

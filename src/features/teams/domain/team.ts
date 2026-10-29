@@ -17,7 +17,10 @@ export type TeamVisibility = (typeof TEAM_VISIBILITIES)[number];
 
 export interface Team {
     id: number;
-    tournamentId: number;
+    /** null : équipe hors tournoi. */
+    tournamentId: number | null;
+    /** Celui du tournoi pour une équipe inscrite. */
+    game: { id: number; name: string };
     name: string;
     isEliminated: boolean;
     /** Une équipe privée ne reçoit plus de demandes d'adhésion. */
@@ -32,7 +35,7 @@ export interface JoinRequest {
     id: number;
     teamId: number;
     teamName: string;
-    tournamentId: number;
+    tournamentId: number | null;
     user: { id: number; username: string };
     status: JoinRequestStatus;
     createdAt: string;

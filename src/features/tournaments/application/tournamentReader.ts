@@ -25,10 +25,11 @@ export class TournamentReader {
         return tournament;
     }
 
-    requireTeam(id: number): { team: Team; tournament: Tournament } {
+    /** tournament à null pour une équipe hors tournoi. */
+    requireTeam(id: number): { team: Team; tournament: Tournament | null } {
         const team = this.teams.findById(id);
         if (!team) throw new NotFoundError('TEAM_NOT_FOUND', 'Équipe introuvable');
-        return { team, tournament: this.tournaments.findById(team.tournamentId)! };
+        return { team, tournament: team.tournamentId === null ? null : this.tournaments.findById(team.tournamentId)! };
     }
 
     getDetail(id: number): TournamentDetail {

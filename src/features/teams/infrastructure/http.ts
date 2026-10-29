@@ -11,6 +11,15 @@ const teamNameBody = z.strictObject({
     name: z.string().trim().min(2, 'Le nom doit faire au moins 2 caractères').max(50),
 });
 
+const createFreeTeamBody = teamNameBody.extend({ gameId: idSchema });
+
+const registerTeamBody = z.strictObject({ tournamentId: idSchema });
+
+const listTeamsQuery = paginationQuery.extend({
+    free: z.enum(['true', 'false']).optional().describe('true : seulement les équipes hors tournoi'),
+    search: z.string().trim().min(1).optional(),
+});
+
 const updateTeamBody = z
     .strictObject({
         name: teamNameBody.shape.name.optional(),
@@ -32,7 +41,8 @@ const searchTeamsQuery = z.object({ search: z.string().trim().min(1).optional() 
 
 export const teamResponse = z.object({
     id: z.number().int(),
-    tournamentId: z.number().int(),
+    tournamentId: z.number().int().nullable().describe('null : équipe hors tournoi'),
+    game: z.object({ id: z.number().int(), name: z.string() }),
     name: z.string(),
     isEliminated: z.boolean(),
     visibility: z.enum(TEAM_VISIBILITIES),
@@ -52,6 +62,7 @@ export function toTeamResponse(team: Team): z.infer<typeof teamResponse> {
     return {
         id: team.id,
         tournamentId: team.tournamentId,
+        game: { id: team.game.id, name: team.game.name },
         name: team.name,
         isEliminated: team.isEliminated,
         visibility: team.visibility,
@@ -69,7 +80,7 @@ export function toTeamResponse(team: Team): z.infer<typeof teamResponse> {
 const joinRequestResponse = z.object({
     id: z.number().int(),
     teamId: z.number().int(),
-    tournamentId: z.number().int(),
+    tournamentId: z.number().int().nullable(),
     team: z.object({ id: z.number().int(), name: z.string() }),
     user: z.object({ id: z.number().int(), username: z.string() }),
     status: z.enum(JOIN_REQUEST_STATUSES),
@@ -128,6 +139,48 @@ export function teamRoutes(teams: TeamService, joinRequests: JoinRequestService)
                 409: 'Inscriptions closes, déjà dans une équipe, tournoi complet ou nom pris (REGISTRATION_CLOSED, ALREADY_IN_TEAM, TOURNAMENT_FULL, TEAM_NAME_TAKEN)',
             },
             handle: ({ params, body, user }) => ({ team: toTeamResponse(teams.create(params.id, user.id, body.name)) }),
+        }),
+        route({
+            method: 'get',
+            path: '/api/teams',
+            tag: 'Équipes',
+            summary: 'Chercher une équipe, toutes ou seulement celles hors tournoi (?free=true), les plus récentes d\'abord',
+            access: 'public',
+            query: listTeamsQuery,
+            response: z.object({ teams: z.array(teamResponse), pagination: paginationSchema }),
+            handle: ({ query }) => {
+                const { free, search, ...page } = query;
+                const result = teams.search({ free: free === undefined ? undefined : free === 'true', search }, page);
+                return { teams: result.items.map(toTeamResponse), pagination: toPagination(page, result.total) };
+            },
+        }),
+        route({
+            method: 'post',
+            path: '/api/teams',
+            tag: 'Équipes',
+            summary: 'Créer une équipe hors tournoi et en devenir capitaine ; elle s\'inscrira plus tard',
+            access: 'authenticated',
+            body: createFreeTeamBody,
+            status: 201,
+            response: teamEnvelope,
+            errors: { 404: 'Jeu introuvable (GAME_NOT_FOUND)' },
+            handle: ({ body, user }) => ({ team: toTeamResponse(teams.createFree(user.id, body.name, body.gameId)) }),
+        }),
+        route({
+            method: 'post',
+            path: '/api/teams/:id/register',
+            tag: 'Équipes',
+            summary: 'Inscrire une équipe hors tournoi à un tournoi aux inscriptions ouvertes',
+            access: 'authenticated',
+            params: idParams,
+            body: registerTeamBody,
+            response: teamEnvelope,
+            errors: {
+                403: CAPTAIN_ERRORS[403],
+                404: 'Équipe ou tournoi introuvable (TEAM_NOT_FOUND, TOURNAMENT_NOT_FOUND)',
+                409: 'Déjà inscrite, inscriptions closes, autre jeu, tournoi complet, membre déjà dans le tournoi ou nom pris (TEAM_ALREADY_REGISTERED, REGISTRATION_CLOSED, GAME_MISMATCH, TOURNAMENT_FULL, MEMBER_ALREADY_IN_TOURNAMENT, TEAM_NAME_TAKEN)',
+            },
+            handle: ({ params, body, user }) => ({ team: toTeamResponse(teams.register(params.id, user.id, body.tournamentId)) }),
         }),
         route({
             method: 'get',

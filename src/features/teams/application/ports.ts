@@ -7,16 +7,20 @@ export interface TeamRepository {
     findByTournament(tournamentId: number, search?: string): Team[];
     /** Les équipes du joueur, tous tournois confondus, les plus récentes d'abord. */
     findByUser(userId: number, page: Page): Paginated<Team>;
+    /** free : seulement les équipes hors tournoi (true) ou inscrites (false). Les plus récentes d'abord. */
+    search(filter: { free?: boolean; search?: string }, page: Page): Paginated<Team>;
     countByTournament(tournamentId: number): number;
     findTeamIdOfUser(tournamentId: number, userId: number): number | undefined;
-    /** Crée l'équipe avec son capitaine. Lève ConflictError (TEAM_NAME_TAKEN). */
-    create(tournamentId: number, name: string, captainId: number): Team;
+    /** Crée l'équipe avec son capitaine (tournamentId null : hors tournoi). Lève ConflictError (TEAM_NAME_TAKEN). */
+    create(tournamentId: number | null, gameId: number, name: string, captainId: number): Team;
+    /** Inscrit une équipe hors tournoi, membres compris. Lève ConflictError (TEAM_NAME_TAKEN). */
+    register(id: number, tournamentId: number): void;
     /** Lève ConflictError (TEAM_NAME_TAKEN). */
     rename(id: number, name: string): void;
     setVisibility(id: number, visibility: TeamVisibility): void;
     remove(id: number): void;
     setEliminated(id: number): void;
-    addMember(teamId: number, tournamentId: number, userId: number): void;
+    addMember(teamId: number, tournamentId: number | null, userId: number): void;
     removeMember(teamId: number, userId: number): void;
     setMemberRole(teamId: number, userId: number, roleId: number | null): void;
     setCaptain(teamId: number, userId: number): void;

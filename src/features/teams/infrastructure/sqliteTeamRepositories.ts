@@ -6,7 +6,9 @@ import type { JoinRequest, JoinRequestStatus, Team, TeamMember, TeamVisibility }
 
 interface TeamRow {
     id: number;
-    tournament_id: number;
+    tournament_id: number | null;
+    game_id: number;
+    game_name: string;
     name: string;
     is_eliminated: 0 | 1;
     visibility: TeamVisibility;
@@ -27,7 +29,7 @@ interface JoinRequestRow {
     id: number;
     team_id: number;
     team_name: string;
-    tournament_id: number;
+    tournament_id: number | null;
     user_id: number;
     username: string;
     status: JoinRequestStatus;
@@ -49,6 +51,7 @@ function toTeam(row: TeamRow, members: MemberRow[]): Team {
     return {
         id: row.id,
         tournamentId: row.tournament_id,
+        game: { id: row.game_id, name: row.game_name },
         name: row.name,
         isEliminated: row.is_eliminated === 1,
         visibility: row.visibility,
@@ -77,6 +80,8 @@ const SELECT_MEMBERS = `
     JOIN users u ON u.id = tm.user_id
     LEFT JOIN game_roles r ON r.id = tm.role_id`;
 
+const SELECT_TEAMS = 'SELECT t.*, g.name AS game_name FROM teams t JOIN games g ON g.id = t.game_id';
+
 function nameTaken(err: unknown): never {
     if (isUniqueViolation(err)) throw new ConflictError('TEAM_NAME_TAKEN', 'Ce nom d\'équipe est déjà pris dans ce tournoi');
     throw err;
@@ -90,7 +95,7 @@ export class SqliteTeamRepository implements TeamRepository {
     }
 
     findById(id: number): Team | undefined {
-        const row = this.db.prepare<[number], TeamRow>('SELECT * FROM teams WHERE id = ?').get(id);
+        const row = this.db.prepare<[number], TeamRow>(`${SELECT_TEAMS} WHERE t.id = ?`).get(id);
         if (!row) return undefined;
         const members = this.db
             .prepare<[number], MemberRow>(`${SELECT_MEMBERS} WHERE tm.team_id = ? ORDER BY tm.joined_at, tm.user_id`)
@@ -101,9 +106,9 @@ export class SqliteTeamRepository implements TeamRepository {
     findByTournament(tournamentId: number, search?: string): Team[] {
         const rows = this.db
             .prepare<{ tournamentId: number; search: string | null }, TeamRow>(`
-                SELECT * FROM teams
-                WHERE tournament_id = @tournamentId AND (@search IS NULL OR instr(lower(name), lower(@search)) > 0)
-                ORDER BY created_at, id`)
+                ${SELECT_TEAMS}
+                WHERE t.tournament_id = @tournamentId AND (@search IS NULL OR instr(lower(t.name), lower(@search)) > 0)
+                ORDER BY t.created_at, t.id`)
             .all({ tournamentId, search: search ?? null });
         const members = this.db
             .prepare<[number], MemberRow>(`${SELECT_MEMBERS} WHERE tm.tournament_id = ? ORDER BY tm.joined_at, tm.user_id`)
@@ -114,7 +119,7 @@ export class SqliteTeamRepository implements TeamRepository {
     findByUser(userId: number, page: Page): Paginated<Team> {
         const rows = this.db
             .prepare<[number, number, number], TeamRow>(`
-                SELECT t.* FROM teams t
+                ${SELECT_TEAMS}
                 JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
                 ORDER BY t.created_at DESC, t.id DESC LIMIT ? OFFSET ?`)
             .all(userId, page.limit, page.offset);
@@ -129,6 +134,20 @@ export class SqliteTeamRepository implements TeamRepository {
         return { items: rows.map((row) => toTeam(row, members)), total };
     }
 
+    search(filter: { free?: boolean; search?: string }, page: Page): Paginated<Team> {
+        const params = { free: filter.free === undefined ? null : Number(filter.free), search: filter.search ?? null };
+        const where = `WHERE (@free IS NULL OR (t.tournament_id IS NULL) = @free)
+            AND (@search IS NULL OR instr(lower(t.name), lower(@search)) > 0)`;
+        const rows = this.db
+            .prepare<typeof params & Page, TeamRow>(`${SELECT_TEAMS} ${where} ORDER BY t.created_at DESC, t.id DESC LIMIT @limit OFFSET @offset`)
+            .all({ ...params, ...page });
+        const total = this.db.prepare<typeof params, { n: number }>(`SELECT COUNT(*) AS n FROM teams t ${where}`).get(params)!.n;
+        const members = this.db
+            .prepare<[string], MemberRow>(`${SELECT_MEMBERS} WHERE tm.team_id IN (SELECT value FROM json_each(?)) ORDER BY tm.joined_at, tm.user_id`)
+            .all(JSON.stringify(rows.map((r) => r.id)));
+        return { items: rows.map((row) => toTeam(row, members)), total };
+    }
+
     countByTournament(tournamentId: number): number {
         return this.db.prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM teams WHERE tournament_id = ?').get(tournamentId)!.n;
     }
@@ -139,15 +158,15 @@ export class SqliteTeamRepository implements TeamRepository {
             .get(tournamentId, userId)?.team_id;
     }
 
-    create(tournamentId: number, name: string, captainId: number): Team {
+    create(tournamentId: number | null, gameId: number, name: string, captainId: number): Team {
         let id: number;
         try {
             id = this.db.transaction(() => {
                 const team = this.db
-                    .prepare<[number, string], { id: number }>('INSERT INTO teams (tournament_id, name) VALUES (?, ?) RETURNING id')
-                    .get(tournamentId, name)!;
+                    .prepare<[number | null, number, string], { id: number }>('INSERT INTO teams (tournament_id, game_id, name) VALUES (?, ?, ?) RETURNING id')
+                    .get(tournamentId, gameId, name)!;
                 this.db
-                    .prepare<[number, number, number]>('INSERT INTO team_members (team_id, user_id, tournament_id, is_captain) VALUES (?, ?, ?, 1)')
+                    .prepare<[number, number, number | null]>('INSERT INTO team_members (team_id, user_id, tournament_id, is_captain) VALUES (?, ?, ?, 1)')
                     .run(team.id, captainId, tournamentId);
                 return team.id;
             })();
@@ -155,6 +174,18 @@ export class SqliteTeamRepository implements TeamRepository {
             nameTaken(err);
         }
         return this.findById(id)!;
+    }
+
+    // L'équipe d'abord : les membres la référencent par (id, tournament_id)
+    register(id: number, tournamentId: number): void {
+        this.db.transaction(() => {
+            try {
+                this.db.prepare<[number, number]>('UPDATE teams SET tournament_id = ? WHERE id = ?').run(tournamentId, id);
+            } catch (err) {
+                nameTaken(err);
+            }
+            this.db.prepare<[number, number]>('UPDATE team_members SET tournament_id = ? WHERE team_id = ?').run(tournamentId, id);
+        })();
     }
 
     rename(id: number, name: string): void {
@@ -177,9 +208,9 @@ export class SqliteTeamRepository implements TeamRepository {
         this.db.prepare<[number]>('UPDATE teams SET is_eliminated = 1 WHERE id = ?').run(id);
     }
 
-    addMember(teamId: number, tournamentId: number, userId: number): void {
+    addMember(teamId: number, tournamentId: number | null, userId: number): void {
         this.db
-            .prepare<[number, number, number]>('INSERT INTO team_members (team_id, user_id, tournament_id) VALUES (?, ?, ?)')
+            .prepare<[number, number, number | null]>('INSERT INTO team_members (team_id, user_id, tournament_id) VALUES (?, ?, ?)')
             .run(teamId, userId, tournamentId);
     }
 

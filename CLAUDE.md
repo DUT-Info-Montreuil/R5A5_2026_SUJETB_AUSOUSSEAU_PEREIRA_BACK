@@ -80,6 +80,9 @@ Légende : [x] fait et testé côté API · [ ] à faire.
   en temps réel (`joinRequest:new/updated`), `/api/me/join-requests`, `/api/me/teams`, `/api/users/:id/stats`,
   `registrationClosesAt`, `scheduledAt`, `visibility` d'équipe. Colonnes ajoutées après coup : `ADDED_COLUMNS`
   dans `database.ts` (migration des bases existantes).
+- [x] Équipes hors tournoi (`BACK-ATTENDU.md` § 7) : `POST /api/teams`, `GET /api/teams?free=true`,
+  `POST /api/teams/:id/register`. `teams.tournament_id` nullable et `teams.game_id` : `migrateFreeTeams` dans
+  `database.ts` reconstruit les tables des bases existantes.
 
 Règles de gestion choisies : fin de `api-routes.md`.
 

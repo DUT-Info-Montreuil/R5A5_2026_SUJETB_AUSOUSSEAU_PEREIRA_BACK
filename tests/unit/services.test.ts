@@ -11,6 +11,7 @@ import { AccessDeniedError, ConflictError } from '../../src/shared/domain/errors
 const team: Team = {
     id: 1,
     tournamentId: 1,
+    game: { id: 1, name: 'Jeu' },
     name: 'Les Bleus',
     isEliminated: false,
     visibility: 'open',

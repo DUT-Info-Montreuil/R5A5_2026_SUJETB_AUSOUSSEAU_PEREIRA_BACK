@@ -1,9 +1,9 @@
 import type { Logger, Page, Paginated, UnitOfWork } from '../../../shared/application/ports.js';
 import type { RealtimeNotifier } from '../../../shared/application/realtimeNotifier.js';
-import { AccessDeniedError, NotFoundError } from '../../../shared/domain/errors.js';
+import { AccessDeniedError, ConflictError, NotFoundError } from '../../../shared/domain/errors.js';
 import type { TournamentReader } from '../../tournaments/application/tournamentReader.js';
-import { assertRegistrationOpen } from '../../tournaments/domain/tournament.js';
-import { assertCaptain, assertNotFull, assertOpenToRequests, assertPending, captainOf, type JoinRequest, type JoinRequestStatus } from '../domain/team.js';
+import { assertTeamEditable } from '../../tournaments/domain/tournament.js';
+import { assertCaptain, assertNotFull, findMember, assertOpenToRequests, assertPending, captainOf, type JoinRequest, type JoinRequestStatus } from '../domain/team.js';
 import type { JoinRequestRepository, TeamRepository } from './ports.js';
 import type { TeamService } from './teamService.js';
 
@@ -37,8 +37,9 @@ export class JoinRequestService {
     /** B-06 / B-07 : demander à rejoindre une équipe, sans en avoir déjà une dans ce tournoi. */
     create(teamId: number, userId: number): JoinRequest {
         const { team, tournament } = this.reader.requireTeam(teamId);
-        assertRegistrationOpen(tournament);
-        this.teamService.assertNotInTournament(tournament.id, userId);
+        assertTeamEditable(tournament);
+        if (tournament) this.teamService.assertNotInTournament(tournament.id, userId);
+        else if (findMember(team, userId)) throw new ConflictError('ALREADY_IN_TEAM', 'Vous êtes déjà membre de cette équipe');
         assertNotFull(team);
         assertOpenToRequests(team);
         const request = this.joinRequests.create(teamId, userId);
@@ -62,17 +63,17 @@ export class JoinRequestService {
     accept(requestId: number, userId: number): JoinRequest {
         const { request, tournament } = this.asCaptainOf(requestId, userId);
         const cancelled = this.uow.run(() => {
-            this.teamService.assertNotInTournament(tournament.id, request.user.id);
+            if (tournament) this.teamService.assertNotInTournament(tournament.id, request.user.id);
             assertNotFull(this.teams.findById(request.teamId)!);
-            this.teams.addMember(request.teamId, tournament.id, request.user.id);
+            this.teams.addMember(request.teamId, tournament?.id ?? null, request.user.id);
             this.joinRequests.setStatus(request.id, 'accepted');
-            return this.joinRequests.cancelPendingOfUserInTournament(request.user.id, tournament.id);
+            return tournament ? this.joinRequests.cancelPendingOfUserInTournament(request.user.id, tournament.id) : [];
         });
         this.logger.info('join_request_accepted', { join_request: request.id, team: request.teamId, user: request.user.id });
         const accepted = this.joinRequests.findById(request.id)!;
         for (const r of [accepted, ...cancelled]) this.notifier.joinRequestUpdated(r);
         this.reader.publishTeam(request.teamId);
-        this.reader.publishTournament(tournament.id);
+        if (tournament) this.reader.publishTournament(tournament.id);
         return accepted;
     }
 
@@ -105,7 +106,7 @@ export class JoinRequestService {
         const request = this.requireRequest(requestId);
         const { team, tournament } = this.reader.requireTeam(request.teamId);
         assertCaptain(team, userId);
-        assertRegistrationOpen(tournament);
+        assertTeamEditable(tournament);
         assertPending(request);
         return { request, tournament };
     }

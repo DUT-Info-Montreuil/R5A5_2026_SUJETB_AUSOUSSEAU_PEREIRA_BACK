@@ -42,9 +42,11 @@ CREATE TABLE IF NOT EXISTS tournaments (
 
 CREATE INDEX IF NOT EXISTS idx_tournaments_name ON tournaments (name);
 
+-- tournament_id NULL : équipe hors tournoi, qui s'inscrira plus tard à un tournoi de son jeu
 CREATE TABLE IF NOT EXISTS teams (
   id            INTEGER PRIMARY KEY,
-  tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  tournament_id INTEGER REFERENCES tournaments(id) ON DELETE CASCADE,
+  game_id       INTEGER NOT NULL REFERENCES games(id),
   name          TEXT    NOT NULL CHECK (length(name) BETWEEN 2 AND 50),
   is_eliminated INTEGER NOT NULL DEFAULT 0 CHECK (is_eliminated IN (0, 1)),
   visibility    TEXT    NOT NULL DEFAULT 'open' CHECK (visibility IN ('open', 'private')),
@@ -56,7 +58,7 @@ CREATE TABLE IF NOT EXISTS teams (
 CREATE TABLE IF NOT EXISTS team_members (
   team_id       INTEGER NOT NULL,
   user_id       INTEGER NOT NULL REFERENCES users(id),
-  tournament_id INTEGER NOT NULL,
+  tournament_id INTEGER, -- copie de teams.tournament_id : une équipe par joueur et par tournoi
   role_id       INTEGER REFERENCES game_roles(id),
   is_captain    INTEGER NOT NULL DEFAULT 0 CHECK (is_captain IN (0, 1)),
   joined_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),

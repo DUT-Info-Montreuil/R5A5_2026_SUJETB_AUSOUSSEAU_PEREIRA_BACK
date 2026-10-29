@@ -1,6 +1,6 @@
 # Ce que le back attend du front
 
-Réponse au `BACK-ATTENDU.md` du dépôt FRONT : les six points sont livrés côté back. Ce fichier liste ce que
+Réponse au `BACK-ATTENDU.md` du dépôt FRONT : les sept points sont livrés côté back (le 7e : équipes hors tournoi). Ce fichier liste ce que
 le front doit changer pour les utiliser et retirer ses contournements. Le détail des routes est dans
 `api-routes.md` et sur `/docs` (OpenAPI générée depuis le code).
 
@@ -92,6 +92,28 @@ GET /api/users/:id/stats → 200 {
 - Équipe privée : les nouvelles demandes sont refusées (`409 TEAM_PRIVATE`) ; griser le bouton « Demander à
   rejoindre ». Les demandes déjà en attente restent acceptables par le capitaine.
 - `PATCH /api/teams/:id` accepte `name`, `visibility` ou les deux ; un corps vide est refusé (`400`).
+
+## 7. Équipes hors tournoi
+
+```
+POST /api/teams  { name, gameId }             → 201 { team }   (connecté, devient capitaine)
+GET  /api/teams?free=true&search=             → 200 { teams: TeamDto[], pagination }   (public)
+POST /api/teams/:id/register { tournamentId } → 200 { team }   (capitaine)
+```
+
+- Rien à changer dans `src/services/teams.ts` : les routes ont la forme attendue.
+- `TeamDto` a toujours `game: { id, name }` (celui du tournoi pour une équipe inscrite) ; le champ peut
+  passer d'optionnel à obligatoire dans `dto.ts`.
+- `tournamentId` vaut `null` hors tournoi, dans `TeamDto` comme dans `JoinRequestDto` ; `GET /api/me/teams`
+  renvoie `tournament: null` pour ces équipes. `GET /api/teams` sans `free` liste toutes les équipes,
+  `free=false` seulement les inscrites.
+- Hors tournoi, un joueur peut être dans plusieurs équipes ; l'unicité par tournoi ne joue qu'à l'inscription
+  (`409 MEMBER_ALREADY_IN_TOURNAMENT`). Le nom n'est unique qu'au sein d'un tournoi.
+- À l'inscription, les demandes en attente **des membres** vers d'autres équipes du tournoi sont annulées
+  (`joinRequest:updated`), comme à la création d'une équipe ; `team:updated` et `tournament:updated` sont émis.
+- Ordre des erreurs de `register` : `404` (équipe, tournoi), `403 NOT_TEAM_MEMBER / NOT_CAPTAIN`, puis
+  `409 TEAM_ALREADY_REGISTERED`, `REGISTRATION_CLOSED`, `GAME_MISMATCH`, `TOURNAMENT_FULL`,
+  `MEMBER_ALREADY_IN_TOURNAMENT`, `TEAM_NAME_TAKEN`.
 
 ## Rappel de configuration
 

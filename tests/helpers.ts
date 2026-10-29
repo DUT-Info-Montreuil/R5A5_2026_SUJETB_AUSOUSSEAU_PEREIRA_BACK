@@ -61,9 +61,10 @@ export interface TestTeam {
 /** Équipe de `size` joueurs ; chacun reçoit un rôle du jeu, sauf si `withRoles` est faux. */
 export function createTeam(tournamentId: number, size = 1, withRoles = true): TestTeam {
     const { teams, tournaments, games } = container.repositories;
-    const roleId = games.findById(tournaments.findById(tournamentId)!.game.id)!.roles[0]!.id;
+    const gameId = tournaments.findById(tournamentId)!.game.id;
+    const roleId = games.findById(gameId)!.roles[0]!.id;
     const captain = quickUser();
-    const team = teams.create(tournamentId, `Equipe ${++seq}`, captain.id);
+    const team = teams.create(tournamentId, gameId, `Equipe ${++seq}`, captain.id);
     const members: TestUser[] = [];
     for (let i = 1; i < size; i++) {
         const member = quickUser();
