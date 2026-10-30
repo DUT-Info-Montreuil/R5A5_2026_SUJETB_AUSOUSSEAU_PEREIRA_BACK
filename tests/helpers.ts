@@ -105,3 +105,8 @@ export function matchesOf(tournamentId: number) {
         status: string;
     }[];
 }
+
+/** Fixe dans une heure l'horaire de tous les matchs du tournoi : les paris s'y ouvrent. */
+export function scheduleMatches(tournamentId: number): void {
+    db.prepare('UPDATE matches SET scheduled_at = ? WHERE tournament_id = ?').run(new Date(Date.now() + 3_600_000).toISOString(), tournamentId);
+}

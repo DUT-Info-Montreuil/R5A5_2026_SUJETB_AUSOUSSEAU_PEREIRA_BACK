@@ -2,7 +2,7 @@ import type { Page, Paginated } from '../../../shared/application/ports.js';
 import { ConflictError } from '../../../shared/domain/errors.js';
 import { isUniqueViolation, SQL_NOW, type Database } from '../../../shared/infrastructure/database.js';
 import type { BetRepository, Bettor } from '../application/ports.js';
-import type { Bet, BetStatus } from '../domain/bet.js';
+import type { Bet, BetStatus, WalletEvent } from '../domain/bet.js';
 
 interface BetRow {
     id: number;
@@ -64,12 +64,15 @@ export class SqliteBetRepository implements BetRepository {
             .map(toBet);
     }
 
-    totalsOf(userId: number): { staked: number; paidOut: number } {
+    // Un pari annulé est supprimé : tout se passe comme s'il n'avait jamais été posé
+    walletEventsOf(userId: number): WalletEvent[] {
         return this.db
-            .prepare<[number], { staked: number; paidOut: number }>(
-                'SELECT COALESCE(SUM(amount), 0) AS staked, COALESCE(SUM(payout), 0) AS paidOut FROM bets WHERE user_id = ?',
+            .prepare<[number, number], WalletEvent>(
+                `SELECT created_at AS at, -amount AS delta FROM bets WHERE user_id = ?
+                 UNION ALL
+                 SELECT settled_at, payout FROM bets WHERE user_id = ? AND settled_at IS NOT NULL`,
             )
-            .get(userId)!;
+            .all(userId, userId);
     }
 
     create(userId: number, matchId: number, teamId: number, amount: number): Bet {

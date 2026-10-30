@@ -1,6 +1,6 @@
 // Règles des paris testées seules : ni base de données, ni serveur
 import { describe, expect, it } from 'vitest';
-import { incomeOf, isOpen, parisWeek, settle } from '../../src/features/bets/domain/bet.js';
+import { isOpen, parisWeek, settle, walletOf } from '../../src/features/bets/domain/bet.js';
 import type { Match } from '../../src/features/tournaments/domain/bracket.js';
 import type { Tournament } from '../../src/features/tournaments/domain/tournament.js';
 
@@ -22,20 +22,40 @@ describe('Règlement (pari mutuel)', () => {
 });
 
 describe('Portefeuille', () => {
-    it('100 Écus au départ, puis 10 par heure pleine', () => {
-        const now = new Date('2026-10-30T12:00:00.000Z');
-        expect(incomeOf('2026-10-30T11:30:00.000Z', now)).toEqual({ income: 100, nextIncomeAt: '2026-10-30T12:30:00.000Z' });
-        expect(incomeOf('2026-10-30T09:00:00.000Z', now)).toEqual({ income: 130, nextIncomeAt: '2026-10-30T13:00:00.000Z' });
+    const now = new Date('2026-10-30T12:00:00.000Z');
+    const registered = '2026-10-30T02:30:00.000Z'; // heures pleines à 03:30, 04:30...
+
+    it('100 Écus au départ ; le revenu horaire ne fait pas dépasser 100', () => {
+        expect(walletOf(registered, [], now)).toEqual({ balance: 100, nextIncomeAt: null });
+    });
+
+    it('après une mise, 10 par heure pleine jusqu\'à 100 ; prochain revenu à l\'heure pleine suivante', () => {
+        const events = [{ at: '2026-10-30T09:00:00.000Z', delta: -80 }]; // 20, puis 09:30, 10:30, 11:30
+        expect(walletOf(registered, events, now)).toEqual({ balance: 50, nextIncomeAt: '2026-10-30T12:30:00.000Z' });
+        const longAgo = [{ at: '2026-10-30T03:00:00.000Z', delta: -80 }]; // 8 heures pleines ensuite, plafonné
+        expect(walletOf(registered, longAgo, now).balance).toBe(100);
+    });
+
+    it('les gains dépassent le plafond, et le revenu reprend une fois redescendu dessous', () => {
+        const events = [
+            { at: '2026-10-30T03:00:00.000Z', delta: -100 }, // 0
+            { at: '2026-10-30T03:45:00.000Z', delta: 300 }, // 03:30 : 10, puis 310
+            { at: '2026-10-30T07:00:00.000Z', delta: -250 }, // 60, puis 07:30 à 11:30 : 5 heures, plafonné à 100
+        ];
+        expect(walletOf(registered, events, now).balance).toBe(100);
+        expect(walletOf(registered, events.slice(0, 2), now)).toEqual({ balance: 310, nextIncomeAt: null });
+        expect(walletOf(registered, [...events, { at: '2026-10-30T11:45:00.000Z', delta: -30 }], now).balance).toBe(70);
     });
 });
 
 describe('Ouverture des paris', () => {
     const tournament = { status: 'in_progress' } as Tournament;
-    const match = { status: 'ready', scheduledAt: null } as Match;
+    const match = { status: 'ready', scheduledAt: '2026-10-31T00:00:00.000Z' } as Match;
     const now = new Date('2026-10-30T12:00:00Z');
 
-    it('ouverts sur un match prêt, jusqu\'à son horaire s\'il est fixé', () => {
+    it('ouverts sur un match prêt, seulement s\'il a un horaire, jusqu\'à cet horaire', () => {
         expect(isOpen(match, tournament, now)).toBe(true);
+        expect(isOpen({ ...match, scheduledAt: null }, tournament, now)).toBe(false);
         expect(isOpen({ ...match, scheduledAt: '2026-10-30T12:00:01.000Z' }, tournament, now)).toBe(true);
         expect(isOpen({ ...match, scheduledAt: '2026-10-30T12:00:00.000Z' }, tournament, now)).toBe(false);
     });

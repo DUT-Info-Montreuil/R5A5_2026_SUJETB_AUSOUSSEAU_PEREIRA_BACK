@@ -7,7 +7,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRealtime } from '../src/realtime/socketServer.js';
 import { app, container } from './context.js';
-import { bearer, closedTournament, createTeam, createTournament, matchesOf, quickUser, type TestUser } from './helpers.js';
+import { bearer, closedTournament, createTeam, createTournament, matchesOf, quickUser, scheduleMatches, type TestUser } from './helpers.js';
 
 const ALLOWED_ORIGIN = 'http://localhost:5173';
 
@@ -96,6 +96,7 @@ describe('Socket.IO', () => {
 
     it('paris : le public voit la cagnotte bouger, seul le parieur reçoit son solde', async () => {
         const t = await closedTournament();
+        scheduleMatches(t.id);
         const q1 = matchesOf(t.id)[0]!;
         const fan = quickUser();
         const visitor = await client();

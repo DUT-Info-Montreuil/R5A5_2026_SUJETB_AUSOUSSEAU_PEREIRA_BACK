@@ -141,8 +141,16 @@ Précisions :
 - Ordre des erreurs de `POST /api/matches/:id/bets` : `400` (mise < 10), `404 MATCH_NOT_FOUND`, `403 ADMIN_CANNOT_BET /
   PLAYER_CANNOT_BET`, `409 BETS_CLOSED`, `422 TEAM_NOT_IN_MATCH`, `409 ALREADY_BET`, `409 INSUFFICIENT_FUNDS`.
 
-**À savoir** : sans `scheduledAt`, les paris restent ouverts jusqu'à la saisie du résultat, donc pendant que le
-match se joue. Pour l'éviter, l'admin fixe l'horaire de chaque match ; le front peut le rappeler dans l'écran admin.
+**Deux règles changent par rapport à votre demande** (décidées après coup, pour éviter la triche et l'inflation) :
+
+1. **Pas d'horaire, pas de paris.** Un match sans `scheduledAt` a `open: false` et `closesAt: null` ; parier renvoie
+   `409 BETS_CLOSED` avec le message « Les paris ouvrent quand l'horaire du match est fixé ». Afficher
+   « Paris à venir » plutôt qu'un bouton, et rappeler à l'admin de fixer l'horaire de chaque match. Les paris
+   s'ouvrent dès que l'admin le fixe (`bets:updated` arrive).
+2. **Revenu passif plafonné à 100.** Les 10 Écus/heure ne tombent que tant que le solde est sous 100, et ne le font
+   jamais dépasser 100. Les gains de paris peuvent dépasser 100. `GET /api/me/wallet` renvoie
+   `nextIncomeAt: null` quand le solde est à 100 ou plus : le type devient `nextIncomeAt: string | null`
+   (masquer le compte à rebours dans ce cas).
 
 ## Rappel de configuration
 

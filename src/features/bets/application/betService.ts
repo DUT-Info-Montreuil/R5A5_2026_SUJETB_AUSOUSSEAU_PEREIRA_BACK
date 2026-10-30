@@ -7,7 +7,7 @@ import type { TournamentReader } from '../../tournaments/application/tournamentR
 import { opponentOf, type Match } from '../../tournaments/domain/bracket.js';
 import type { UserRepository } from '../../users/application/ports.js';
 import type { User } from '../../users/domain/user.js';
-import { assertAffordable, assertCanBet, assertOpen, incomeOf, isOpen, parisWeek, settle as settleBets, type Bet } from '../domain/bet.js';
+import { assertAffordable, assertCanBet, assertOpen, isOpen, walletOf, parisWeek, settle as settleBets, type Bet } from '../domain/bet.js';
 import type { BetPool, BetRepository, Bettor } from './ports.js';
 
 export class BetService implements BetSettlement {
@@ -43,10 +43,8 @@ export class BetService implements BetSettlement {
         this.clock = deps.clock;
     }
 
-    wallet(userId: number): { balance: number; nextIncomeAt: string } {
-        const { income, nextIncomeAt } = incomeOf(this.users.findById(userId)!.createdAt, this.clock());
-        const { staked, paidOut } = this.bets.totalsOf(userId);
-        return { balance: income - staked + paidOut, nextIncomeAt };
+    wallet(userId: number): { balance: number; nextIncomeAt: string | null } {
+        return walletOf(this.users.findById(userId)!.createdAt, this.bets.walletEventsOf(userId), this.clock());
     }
 
     pools(tournamentId: number): BetPool[] {

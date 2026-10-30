@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { app, db } from './context.js';
-import { bearer, closedTournament, createTeam, createTournament, matchesOf, quickUser, startedTournament, type TestUser } from './helpers.js';
+import { bearer, closedTournament, createTeam, createTournament, matchesOf, quickUser, scheduleMatches, startedTournament, type TestUser } from './helpers.js';
 
 const bet = (matchId: number, user: TestUser, teamId: number, amount: number) =>
     request(app).post(`/api/matches/${matchId}/bets`).set(...bearer(user)).send({ teamId, amount });
@@ -13,6 +13,7 @@ const quarter = (tournamentId: number, position = 1) => matchesOf(tournamentId).
 describe('POST /api/matches/:id/bets : qui parie', () => {
     it('refuse un visiteur (401), l\'admin et un joueur du tournoi (403), sans débiter', async () => {
         const t = await closedTournament();
+        scheduleMatches(t.id);
         const q1 = quarter(t.id);
         expect((await request(app).post(`/api/matches/${q1.id}/bets`).send({ teamId: q1.team_a_id, amount: 10 })).status).toBe(401);
 
@@ -36,6 +37,7 @@ describe('POST /api/matches/:id/bets : qui parie', () => {
 describe('POST /api/matches/:id/bets : quand et combien', () => {
     it('mise, débite, et refuse un second pari, une mise trop haute ou trop basse, une équipe hors du match', async () => {
         const t = await closedTournament();
+        scheduleMatches(t.id);
         const q1 = quarter(t.id);
         const fan = quickUser();
 
@@ -54,9 +56,14 @@ describe('POST /api/matches/:id/bets : quand et combien', () => {
         expect(await balanceOf(fan)).toBe(70);
     });
 
-    it('fermé sur un match aux équipes inconnues, après l\'horaire prévu et après le résultat (409)', async () => {
+    it('fermé sans horaire, sur un match aux équipes inconnues, après l\'horaire prévu et après le résultat (409)', async () => {
         const fan = quickUser();
         const t = await startedTournament();
+        const unscheduled = await bet(quarter(t.id).id, fan, quarter(t.id).team_a_id!, 10);
+        expect(unscheduled.status).toBe(409);
+        expect(unscheduled.body.error).toEqual({ code: 'BETS_CLOSED', message: 'Les paris ouvrent quand l\'horaire du match est fixé' });
+
+        scheduleMatches(t.id);
         const semi = matchesOf(t.id).find((m) => m.round === 2)!;
         expect((await bet(semi.id, fan, t.teams[0]!.id, 10)).status).toBe(409);
 
@@ -73,6 +80,7 @@ describe('POST /api/matches/:id/bets : quand et combien', () => {
 describe('DELETE /api/matches/:id/bets/me', () => {
     it('rend la mise tant que c\'est ouvert ; 404 sans pari, 409 une fois fermé', async () => {
         const t = await startedTournament();
+        scheduleMatches(t.id);
         const q1 = quarter(t.id);
         const fan = quickUser();
         expect((await request(app).delete(`/api/matches/${q1.id}/bets/me`).set(...bearer(fan))).body.error.code).toBe('BET_NOT_FOUND');
@@ -90,6 +98,7 @@ describe('DELETE /api/matches/:id/bets/me', () => {
 describe('Règlement et classements', () => {
     it('le résultat paie les gagnants, cotes et classements suivent', async () => {
         const t = await startedTournament();
+        scheduleMatches(t.id);
         const q1 = quarter(t.id);
         const [winner, small, loser] = [quickUser(), quickUser(), quickUser()];
         await bet(q1.id, winner, q1.team_a_id!, 30);
@@ -100,7 +109,7 @@ describe('Règlement et classements', () => {
         expect(pools.body.matches[0]).toEqual({
             matchId: q1.id,
             open: true,
-            closesAt: null,
+            closesAt: expect.any(String),
             pot: 80,
             pools: [{ teamId: q1.team_a_id, total: 40, bettors: 2 }, { teamId: q1.team_b_id, total: 40, bettors: 1 }],
         });
@@ -130,6 +139,7 @@ describe('Règlement et classements', () => {
 
     it('un forfait au lancement règle les paris du quart ; personne sur le vainqueur : remboursé', async () => {
         const t = await closedTournament();
+        scheduleMatches(t.id);
         const q1 = quarter(t.id);
         const fan = quickUser();
         await bet(q1.id, fan, q1.team_b_id!, 40);
@@ -145,11 +155,20 @@ describe('Règlement et classements', () => {
         expect(await balanceOf(fan)).toBe(100);
     });
 
-    it('le revenu horaire s\'ajoute au solde', async () => {
+    it('le revenu horaire remonte le solde jusqu\'à 100, pas au-delà', async () => {
+        const t = await closedTournament();
+        scheduleMatches(t.id);
+        const q1 = quarter(t.id);
         const fan = quickUser();
-        db.prepare("UPDATE users SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 hours', '-5 minutes') WHERE id = ?").run(fan.id);
+        const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+        db.prepare('UPDATE users SET created_at = ? WHERE id = ?').run(hoursAgo(5 + 5 / 60), fan.id);
+        expect((await request(app).get('/api/me/wallet').set(...bearer(fan))).body).toEqual({ balance: 100, nextIncomeAt: null });
+
+        // Mise de 60 il y a 3 h 30 : 4 heures pleines tombent ensuite, 40 + 4 × 10
+        await bet(q1.id, fan, q1.team_a_id!, 60);
+        db.prepare('UPDATE bets SET created_at = ? WHERE user_id = ?').run(hoursAgo(3.5), fan.id);
         const wallet = await request(app).get('/api/me/wallet').set(...bearer(fan));
-        expect(wallet.body.balance).toBe(130);
+        expect(wallet.body.balance).toBe(80);
         expect(Date.parse(wallet.body.nextIncomeAt) - Date.now()).toBeLessThanOrEqual(55 * 60_000);
     });
 });

@@ -1,5 +1,5 @@
 import type { Page, Paginated } from '../../../shared/application/ports.js';
-import type { Bet, BetStatus } from '../domain/bet.js';
+import type { Bet, BetStatus, WalletEvent } from '../domain/bet.js';
 
 export interface Bettor {
     rank: number;
@@ -15,8 +15,8 @@ export interface BetRepository {
     findByMatch(matchId: number): Bet[];
     findByTournament(tournamentId: number): Bet[];
     findByUserInTournament(userId: number, tournamentId: number): Bet[];
-    /** Mises de tous les paris, et gains des paris réglés. */
-    totalsOf(userId: number): { staked: number; paidOut: number };
+    /** Mise de chaque pari (à sa création) et gain de chaque pari réglé (à son règlement). */
+    walletEventsOf(userId: number): WalletEvent[];
     /** Lève ConflictError (ALREADY_BET). */
     create(userId: number, matchId: number, teamId: number, amount: number): Bet;
     remove(id: number): void;

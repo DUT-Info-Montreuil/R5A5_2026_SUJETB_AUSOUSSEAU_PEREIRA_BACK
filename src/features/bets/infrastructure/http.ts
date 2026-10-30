@@ -19,7 +19,7 @@ const weekQuery = paginationQuery.extend({ week: z.enum(['current', 'previous'])
 const betPoolResponse = z.object({
     matchId: z.number().int(),
     open: z.boolean(),
-    closesAt: z.string().nullable().describe('Horaire prévu du match ; null : ferme à la saisie du résultat'),
+    closesAt: z.string().nullable().describe('Horaire prévu du match ; null : pas d\'horaire, paris fermés'),
     pot: z.number().int().describe('Somme des mises'),
     pools: z.array(z.object({ teamId: z.number().int(), total: z.number().int(), bettors: z.number().int() })).describe('Une entrée par équipe connue du match'),
 });
@@ -68,7 +68,7 @@ export function betRoutes(bets: BetService): AnyRoute[] {
             tag: 'Paris',
             summary: 'Mon solde d\'Écus et l\'heure du prochain revenu',
             access: 'authenticated',
-            response: z.object({ balance: z.number().int(), nextIncomeAt: z.string() }),
+            response: z.object({ balance: z.number().int(), nextIncomeAt: z.string().nullable().describe('null : solde au plafond (100), pas de revenu') }),
             handle: ({ user }) => bets.wallet(user.id),
         }),
         route({
@@ -97,7 +97,7 @@ export function betRoutes(bets: BetService): AnyRoute[] {
             method: 'post',
             path: '/api/matches/:id/bets',
             tag: 'Paris',
-            summary: 'Miser sur une équipe du match, tant que ses paris sont ouverts',
+            summary: 'Miser sur une équipe du match, jusqu\'à son horaire prévu (pas d\'horaire : fermé)',
             access: 'authenticated',
             params: idParams,
             body: placeBetBody,

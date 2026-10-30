@@ -84,8 +84,8 @@ Légende : [x] fait et testé côté API · [ ] à faire.
   `POST /api/teams/:id/register`. `teams.tournament_id` nullable et `teams.game_id` : `migrateFreeTeams` dans
   `database.ts` reconstruit les tables des bases existantes.
 
-- [x] Paris en Écus des spectateurs (`BACK-ATTENDU.md` de `feat/paris`, hors barème) : portefeuille, pari mutuel
-  match par match, réglé dans la transaction du résultat (port `BetSettlement` de `MatchService`), classements
+- [x] Paris en Écus des spectateurs (`BACK-ATTENDU.md` de `feat/paris`, hors barème) : portefeuille (revenu passif
+  plafonné à 100), pari mutuel match par match, seulement sur un match qui a un horaire, réglé dans la transaction du résultat (port `BetSettlement` de `MatchService`), classements
   tournoi et semaine, `bets:updated` / `wallet:updated`. Remplace les pronostics d'arbre (retirés, commit 3cd657f).
 
 Règles de gestion choisies : fin de `api-routes.md`.

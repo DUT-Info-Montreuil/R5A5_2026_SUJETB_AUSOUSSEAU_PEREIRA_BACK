@@ -120,7 +120,7 @@ Hors barème B-xx : donne un rôle au spectateur. Les Écus sont des points de j
 
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
-| GET | `/api/me/wallet` | Connecté | `{ balance, nextIncomeAt }` |
+| GET | `/api/me/wallet` | Connecté | `{ balance, nextIncomeAt }` ; `nextIncomeAt` à `null` quand le solde est à 100 ou plus |
 | GET | `/api/tournaments/:id/bets` | Public | `{ matches: [{ matchId, open, closesAt, pot, pools: [{ teamId, total, bettors }] }] }` |
 | GET | `/api/tournaments/:id/bets/me` | Connecté | `{ bets: [{ matchId, teamId, amount, status, payout }] }` |
 | POST | `/api/matches/:id/bets` | Connecté, ni admin ni joueur du tournoi | `{ teamId, amount }` → `201 { bet, balance }` |
@@ -185,5 +185,5 @@ socket.emit('team:leave', teamId);
 - Une équipe privée garde ses demandes déjà en attente : le capitaine peut encore les accepter.
 - Connexion : après chaque échec sur un compte, le compte attend 1 s, puis 2 s, 4 s... (15 min au plus) avant un nouvel essai. Un succès remet le compteur à zéro.
 - Mots de passe : 8 caractères au moins, 72 octets au plus (limite de bcrypt), et les mots de passe les plus fréquents des fuites sont refusés.
-- Paris : 100 Écus à l'inscription, puis 10 par heure pleine (calculés à la lecture). Un pari par match, de 10 Écus au solde. Ouverts sur un match dont les deux équipes sont connues (tournoi clos ou en cours), jusqu'à son `scheduledAt` s'il est fixé, sinon jusqu'au résultat. L'admin et les joueurs du tournoi ne parient pas (`403`).
+- Paris : 100 Écus à l'inscription, puis 10 par heure pleine tant que le solde est sous 100, sans jamais le faire dépasser 100 (les gains de paris, eux, le peuvent). Calculé à la lecture en rejouant mises et gains. Un pari par match, de 10 Écus au solde. Ouverts seulement sur un match dont les deux équipes sont connues **et l'horaire fixé** (tournoi clos ou en cours), jusqu'à cet horaire : sans horaire, on pourrait parier pendant le match. L'admin et les joueurs du tournoi ne parient pas (`403`).
 - Règlement au résultat ou au forfait, y compris les forfaits du lancement : pari mutuel, chaque gagnant reçoit `floor(mise × cagnotte / total misé sur le vainqueur)` ; personne sur le vainqueur : tout le monde est remboursé. Classements par gain net (gains − mises) puis paris gagnés ; la semaine va du lundi 00:00 au dimanche 23:59:59.999, heure de Paris, selon la date de règlement.
