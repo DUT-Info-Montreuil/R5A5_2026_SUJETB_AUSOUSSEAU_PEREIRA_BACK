@@ -1,5 +1,4 @@
 import type { Message } from '../../features/chat/domain/message.js';
-import type { PredictionSummary } from '../../features/predictions/application/ports.js';
 import type { JoinRequest, Team } from '../../features/teams/domain/team.js';
 import type { Match } from '../../features/tournaments/domain/bracket.js';
 import type { Tournament } from '../../features/tournaments/domain/tournament.js';
@@ -30,6 +29,4 @@ export interface RealtimeNotifier {
     joinRequestCreated(request: JoinRequest, captainId: number): void;
     /** L'auteur apprend que sa demande est acceptée, refusée ou annulée. */
     joinRequestUpdated(request: JoinRequest): void;
-    /** Les spectateurs du tournoi voient la répartition des pronostics bouger. */
-    predictionsUpdated(summary: PredictionSummary): void;
 }

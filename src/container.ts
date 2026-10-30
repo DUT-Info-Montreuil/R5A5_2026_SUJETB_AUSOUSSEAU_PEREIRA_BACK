@@ -7,8 +7,6 @@ import { SqliteGameRepository } from './features/games/infrastructure/sqliteGame
 import { JoinRequestService } from './features/teams/application/joinRequestService.js';
 import { TeamService } from './features/teams/application/teamService.js';
 import { SqliteJoinRequestRepository, SqliteTeamRepository } from './features/teams/infrastructure/sqliteTeamRepositories.js';
-import { PredictionService } from './features/predictions/application/predictionService.js';
-import { SqlitePredictionRepository } from './features/predictions/infrastructure/sqlitePredictionRepository.js';
 import { MatchService } from './features/tournaments/application/matchService.js';
 import { TournamentReader } from './features/tournaments/application/tournamentReader.js';
 import { TournamentService } from './features/tournaments/application/tournamentService.js';
@@ -33,7 +31,6 @@ export function createContainer(db: Database, config: Config, logger: Logger) {
         teams: new SqliteTeamRepository(db),
         joinRequests: new SqliteJoinRequestRepository(db),
         messages: new SqliteMessageRepository(db),
-        predictions: new SqlitePredictionRepository(db),
     };
     const tokens = new JwtTokenService(config.jwtSecret, config.jwtExpiresIn);
 
@@ -61,7 +58,6 @@ export function createContainer(db: Database, config: Config, logger: Logger) {
         matchService,
         teamService,
         joinRequestService,
-        predictionService: new PredictionService({ ...repositories, reader, notifier, uow, logger }),
         chatService: new ChatService({ messages: repositories.messages, reader, notifier }),
     };
 }

@@ -114,17 +114,6 @@ Un match n'est jouable que si ses deux équipes sont connues (statut `ready`).
 
 `unread` compte les messages des autres membres plus récents que le repère (tous, si `lastReadMessageId` est `null`).
 
-## Pronostics
-
-Hors barème B-xx : donne un rôle au spectateur. On pronostique tout l'arbre entre la clôture (arbre tiré) et le lancement.
-
-| Méthode | Route | Accès | Description |
-|---|---|---|---|
-| POST | `/api/tournaments/:id/predictions` | Connecté, pas joueur du tournoi | `{ picks: [{ matchId, teamId }] }`, un par match (7) ; remplace le pronostic précédent |
-| GET | `/api/tournaments/:id/predictions/me` | Connecté | `{ picks, points, correct }` ; `picks` vide si rien n'a été envoyé |
-| GET | `/api/tournaments/:id/predictions` | Public | Répartition du public : `{ participants, matches: [{ matchId, picks: [{ teamId, count }] }] }` |
-| GET | `/api/tournaments/:id/predictions/leaderboard` | Public | Classement paginé `{ leaderboard: [{ rank, user, points, correct }], pagination }` |
-
 ## Profil
 
 | Méthode | Route | Accès | Description |
@@ -143,7 +132,6 @@ Hors barème B-xx : donne un rôle au spectateur. On pronostique tout l'arbre en
 | `team:deleted` | Membres de l'équipe | Le capitaine a supprimé l'équipe |
 | `session:expired` | Le client concerné | Jeton expiré, la connexion va être fermée |
 | `joinRequest:new` | Le capitaine de l'équipe | Nouvelle demande d'adhésion |
-| `predictions:updated` | Tous ceux qui consultent le tournoi | Un spectateur a envoyé son pronostic : `{ tournamentId, participants, matches }` |
 | `joinRequest:updated` | L'auteur de la demande | Acceptée, refusée, rejetée à la clôture, annulée (par lui, ou parce qu'il est entré dans une autre équipe) |
 
 Les événements destinés à un joueur précis passent par son salon personnel, rejoint automatiquement à la connexion avec un token.
@@ -181,5 +169,3 @@ socket.emit('team:leave', teamId);
 - Une équipe privée garde ses demandes déjà en attente : le capitaine peut encore les accepter.
 - Connexion : après chaque échec sur un compte, le compte attend 1 s, puis 2 s, 4 s... (15 min au plus) avant un nouvel essai. Un succès remet le compteur à zéro.
 - Mots de passe : 8 caractères au moins, 72 octets au plus (limite de bcrypt), et les mots de passe les plus fréquents des fuites sont refusés.
-- Pronostics : ouverts seulement entre la clôture et le lancement (`409 PREDICTIONS_CLOSED`), donc jamais en connaissant un résultat. Un joueur d'une équipe du tournoi ne pronostique pas (`403 PLAYER_CANNOT_PREDICT`, conflit d'intérêts). L'arbre doit être cohérent : en demie et en finale, seulement une équipe qu'on a fait gagner au tour d'avant (`422 INVALID_PREDICTION`).
-- Points : 1 par quart, 2 par demie, 4 pour la finale (12 au plus), forfaits compris. Classement par points, puis bons pronostics ; ex aequo au même rang, le premier envoyé (ou modifié) affiché d'abord.

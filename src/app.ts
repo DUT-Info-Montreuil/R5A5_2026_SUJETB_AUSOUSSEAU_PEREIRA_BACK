@@ -4,7 +4,6 @@ import swaggerUi from 'swagger-ui-express';
 import type { Container } from './container.js';
 import { chatRoutes } from './features/chat/infrastructure/http.js';
 import { gameRoutes } from './features/games/infrastructure/http.js';
-import { predictionRoutes } from './features/predictions/infrastructure/http.js';
 import { teamRoutes } from './features/teams/infrastructure/http.js';
 import { tournamentRoutes } from './features/tournaments/infrastructure/http.js';
 import { userRoutes } from './features/users/infrastructure/http.js';
@@ -26,7 +25,6 @@ export function apiRoutes(c: Container): AnyRoute[] {
         ...tournamentRoutes(c.tournamentService, c.matchService, c.teamService),
         ...teamRoutes(c.teamService, c.joinRequestService),
         ...chatRoutes(c.chatService),
-        ...predictionRoutes(c.predictionService),
     ];
 }
 

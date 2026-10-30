@@ -122,14 +122,3 @@ CREATE TABLE IF NOT EXISTS message_reads (
   last_read_message_id INTEGER NOT NULL,
   PRIMARY KEY (team_id, user_id)
 ) STRICT;
-
--- Pronostics des spectateurs : le vainqueur annoncé de chaque match de l'arbre
-CREATE TABLE IF NOT EXISTS predictions (
-  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  match_id   INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-  team_id    INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  PRIMARY KEY (user_id, match_id)
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions (match_id);

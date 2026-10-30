@@ -7,7 +7,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRealtime } from '../src/realtime/socketServer.js';
 import { app, container } from './context.js';
-import { bearer, closedTournament, createTeam, createTournament, matchesOf, quickUser, type TestUser } from './helpers.js';
+import { bearer, createTeam, createTournament, quickUser, type TestUser } from './helpers.js';
 
 const ALLOWED_ORIGIN = 'http://localhost:5173';
 
@@ -92,18 +92,6 @@ describe('Socket.IO', () => {
         const update = next<{ teams: unknown[] }>(visitor, 'tournament:updated');
         await request(app).post(`/api/tournaments/${t.id}/teams`).set(...bearer(quickUser())).send({ name: 'Live' });
         expect((await update).teams).toHaveLength(1);
-    });
-
-    it('pronostics : les spectateurs du tournoi voient la répartition changer', async () => {
-        const t = await closedTournament();
-        const visitor = await client();
-        await join(visitor, 'tournament:join', t.id);
-
-        const update = next<{ tournamentId: number; participants: number }>(visitor, 'predictions:updated');
-        const matches = matchesOf(t.id);
-        const picks = matches.map((m) => ({ matchId: m.id, teamId: m.round === 1 ? m.team_a_id! : matches[m.round === 2 ? 2 * m.position - 2 : 0]!.team_a_id! }));
-        expect((await request(app).post(`/api/tournaments/${t.id}/predictions`).set(...bearer(quickUser())).send({ picks })).status).toBe(200);
-        expect(await update).toMatchObject({ tournamentId: t.id, participants: 1 });
     });
 
     it('B-16 : salon d\'équipe refusé au visiteur et à l\'extérieur', async () => {
