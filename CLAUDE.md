@@ -24,7 +24,7 @@ Pas de build : `npm start` exécute le TypeScript avec tsx. Pas de linter : type
 
 ## Architecture (cours 1.11 et 1.12, à respecter)
 
-Clean Architecture, un dossier par fonctionnalité dans `src/features/` (`users`, `games`, `tournaments`, `teams`, `chat`),
+Clean Architecture, un dossier par fonctionnalité dans `src/features/` (`users`, `games`, `tournaments`, `teams`, `chat`, `predictions`),
 trois couches chacun. **Les dépendances vont vers l'intérieur** : infrastructure → application → domain.
 
 - `domain/` : entités et règles métier en fonctions pures. Aucun import de framework, de base ou de bibliothèque HTTP.
@@ -83,6 +83,9 @@ Légende : [x] fait et testé côté API · [ ] à faire.
 - [x] Équipes hors tournoi (`BACK-ATTENDU.md` § 7) : `POST /api/teams`, `GET /api/teams?free=true`,
   `POST /api/teams/:id/register`. `teams.tournament_id` nullable et `teams.game_id` : `migrateFreeTeams` dans
   `database.ts` reconstruit les tables des bases existantes.
+
+- [x] Pronostics des spectateurs (hors barème) : arbre complet entre clôture et lancement, joueurs du tournoi exclus,
+  points 1/2/4, classement paginé, répartition du public en direct (`predictions:updated`). Front : `FRONT-ATTENDU.md` § 9.
 
 Règles de gestion choisies : fin de `api-routes.md`.
 
