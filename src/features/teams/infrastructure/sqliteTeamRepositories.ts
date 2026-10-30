@@ -200,8 +200,12 @@ export class SqliteTeamRepository implements TeamRepository {
         this.db.prepare<[string, number]>('UPDATE teams SET visibility = ? WHERE id = ?').run(visibility, id);
     }
 
+    // Membres d'abord : hors tournoi (tournament_id NULL), SQLite ignore leur clé étrangère composite, donc pas de cascade
     remove(id: number): void {
-        this.db.prepare<[number]>('DELETE FROM teams WHERE id = ?').run(id);
+        this.db.transaction(() => {
+            this.db.prepare<[number]>('DELETE FROM team_members WHERE team_id = ?').run(id);
+            this.db.prepare<[number]>('DELETE FROM teams WHERE id = ?').run(id);
+        })();
     }
 
     setEliminated(id: number): void {

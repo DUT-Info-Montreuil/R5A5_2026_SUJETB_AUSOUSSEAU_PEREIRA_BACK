@@ -115,6 +115,13 @@ POST /api/teams/:id/register { tournamentId } → 200 { team }   (capitaine)
   `409 TEAM_ALREADY_REGISTERED`, `REGISTRATION_CLOSED`, `GAME_MISMATCH`, `TOURNAMENT_FULL`,
   `MEMBER_ALREADY_IN_TOURNAMENT`, `TEAM_NAME_TAKEN`.
 
+## 8. Anomalie de suppression d'une équipe hors tournoi : corrigée
+
+- `DELETE /api/teams/:id` supprime maintenant les membres explicitement (la clé étrangère composite n'est pas
+  vérifiée par SQLite quand `tournament_id` est NULL). Demandes et messages partaient déjà en cascade.
+- Au démarrage, le back purge les membres orphelins laissés avant le correctif : rien à nettoyer à la main.
+- Le départ du dernier membre n'était pas touché (le membre est retiré avant l'équipe).
+
 ## Rappel de configuration
 
 `CORS_ORIGIN` du `.env` du back doit contenir l'origine du front (`http://localhost:5173` en dev).

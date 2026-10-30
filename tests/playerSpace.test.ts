@@ -168,7 +168,7 @@ describe('Statistiques du profil', () => {
 describe('Migration du schéma', () => {
     it('ajoute les nouvelles colonnes à une base créée avant elles', () => {
         const old = openDatabase(':memory:');
-        old.exec('CREATE TABLE teams (id INTEGER PRIMARY KEY, tournament_id INTEGER, name TEXT, is_eliminated INTEGER, created_at TEXT) STRICT');
+        old.exec('CREATE TABLE teams (id INTEGER PRIMARY KEY, tournament_id INTEGER, name TEXT, is_eliminated INTEGER, created_at TEXT, UNIQUE (id, tournament_id)) STRICT');
         old.exec("INSERT INTO teams VALUES (1, 1, 'Ancienne', 0, '')");
         initSchema(old);
         expect(old.prepare('SELECT visibility FROM teams').get()).toEqual({ visibility: 'open' });

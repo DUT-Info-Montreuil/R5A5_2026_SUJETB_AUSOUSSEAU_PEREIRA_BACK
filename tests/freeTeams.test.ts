@@ -73,6 +73,28 @@ describe('Équipes hors tournoi', () => {
     });
 });
 
+describe('Suppression d\'une équipe hors tournoi', () => {
+    // SQLite ignore la clé étrangère composite (team_id, tournament_id) quand tournament_id est NULL : pas de cascade
+    it('supprime ses membres : une nouvelle équipe peut reprendre son identifiant', async () => {
+        const game = createGame();
+        const captain = quickUser();
+        const deleted = await freeTeam(captain, game.id, 'Ephemere');
+        expect((await request(app).delete(`/api/teams/${deleted.id}`).set(...bearer(captain))).status).toBe(204);
+
+        expect(db.prepare('SELECT COUNT(*) AS n FROM team_members WHERE team_id NOT IN (SELECT id FROM teams)').get()).toEqual({ n: 0 });
+        const next = await request(app).post('/api/teams').set(...bearer(quickUser())).send({ name: 'Suivante', gameId: game.id });
+        expect(next.status).toBe(201);
+    });
+
+    it('le dernier membre qui part supprime l\'équipe et ses membres', async () => {
+        const captain = quickUser();
+        const team = await freeTeam(captain, createGame().id);
+        expect((await request(app).delete(`/api/teams/${team.id}/members/me`).set(...bearer(captain))).status).toBe(204);
+
+        expect(db.prepare('SELECT COUNT(*) AS n FROM team_members WHERE team_id = ?').get(team.id)).toEqual({ n: 0 });
+    });
+});
+
 describe('POST /api/teams/:id/register', () => {
     it('refuse un membre qui n\'est pas capitaine (403) et un non-membre (403)', async () => {
         const t = createTournament();

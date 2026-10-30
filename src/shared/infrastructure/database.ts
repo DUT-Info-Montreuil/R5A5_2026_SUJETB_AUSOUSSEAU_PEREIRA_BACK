@@ -23,6 +23,8 @@ export function initSchema(db: Database): void {
         if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
     migrateFreeTeams(db, schema);
+    // Membres laissés par la suppression d'équipes hors tournoi avant le correctif (commit 1f716d1)
+    db.exec('DELETE FROM team_members WHERE team_id NOT IN (SELECT id FROM teams)');
 }
 
 /**
