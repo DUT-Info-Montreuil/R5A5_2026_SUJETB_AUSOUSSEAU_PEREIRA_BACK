@@ -114,6 +114,20 @@ Un match n'est jouable que si ses deux équipes sont connues (statut `ready`).
 
 `unread` compte les messages des autres membres plus récents que le repère (tous, si `lastReadMessageId` est `null`).
 
+## Paris en Écus
+
+Hors barème B-xx : donne un rôle au spectateur. Les Écus sont des points de jeu, pas de l'argent.
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| GET | `/api/me/wallet` | Connecté | `{ balance, nextIncomeAt }` |
+| GET | `/api/tournaments/:id/bets` | Public | `{ matches: [{ matchId, open, closesAt, pot, pools: [{ teamId, total, bettors }] }] }` |
+| GET | `/api/tournaments/:id/bets/me` | Connecté | `{ bets: [{ matchId, teamId, amount, status, payout }] }` |
+| POST | `/api/matches/:id/bets` | Connecté, ni admin ni joueur du tournoi | `{ teamId, amount }` → `201 { bet, balance }` |
+| DELETE | `/api/matches/:id/bets/me` | Auteur, paris ouverts | Annule et rend la mise → `{ balance }` |
+| GET | `/api/tournaments/:id/bets/leaderboard` | Public | Classement paginé `{ leaderboard: [{ rank, user, net, bets, won }], pagination }` |
+| GET | `/api/bets/leaderboard?week=current\|previous` | Public | Même chose sur la semaine, avec `from` / `to` |
+
 ## Profil
 
 | Méthode | Route | Accès | Description |
@@ -132,6 +146,8 @@ Un match n'est jouable que si ses deux équipes sont connues (statut `ready`).
 | `team:deleted` | Membres de l'équipe | Le capitaine a supprimé l'équipe |
 | `session:expired` | Le client concerné | Jeton expiré, la connexion va être fermée |
 | `joinRequest:new` | Le capitaine de l'équipe | Nouvelle demande d'adhésion |
+| `bets:updated` | Tous ceux qui consultent le tournoi | Pari posé ou annulé, match réglé, horaire changé : `{ tournamentId, matches }` |
+| `wallet:updated` | Le parieur | Son pari posé, annulé ou réglé : `{ balance }` |
 | `joinRequest:updated` | L'auteur de la demande | Acceptée, refusée, rejetée à la clôture, annulée (par lui, ou parce qu'il est entré dans une autre équipe) |
 
 Les événements destinés à un joueur précis passent par son salon personnel, rejoint automatiquement à la connexion avec un token.
@@ -169,3 +185,5 @@ socket.emit('team:leave', teamId);
 - Une équipe privée garde ses demandes déjà en attente : le capitaine peut encore les accepter.
 - Connexion : après chaque échec sur un compte, le compte attend 1 s, puis 2 s, 4 s... (15 min au plus) avant un nouvel essai. Un succès remet le compteur à zéro.
 - Mots de passe : 8 caractères au moins, 72 octets au plus (limite de bcrypt), et les mots de passe les plus fréquents des fuites sont refusés.
+- Paris : 100 Écus à l'inscription, puis 10 par heure pleine (calculés à la lecture). Un pari par match, de 10 Écus au solde. Ouverts sur un match dont les deux équipes sont connues (tournoi clos ou en cours), jusqu'à son `scheduledAt` s'il est fixé, sinon jusqu'au résultat. L'admin et les joueurs du tournoi ne parient pas (`403`).
+- Règlement au résultat ou au forfait, y compris les forfaits du lancement : pari mutuel, chaque gagnant reçoit `floor(mise × cagnotte / total misé sur le vainqueur)` ; personne sur le vainqueur : tout le monde est remboursé. Classements par gain net (gains − mises) puis paris gagnés ; la semaine va du lundi 00:00 au dimanche 23:59:59.999, heure de Paris, selon la date de règlement.

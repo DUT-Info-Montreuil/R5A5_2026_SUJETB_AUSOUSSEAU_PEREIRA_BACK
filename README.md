@@ -58,7 +58,7 @@ Clean Architecture, un dossier par fonctionnalité. Les dépendances vont vers l
 | `src/container.ts` | Composition root : assemble les implémentations concrètes |
 | `src/app.ts`, `src/server.ts` | Application Express, démarrage et arrêt progressif |
 
-Fonctionnalités : `users` (authentification), `games`, `tournaments` (tournois, arbre, matchs), `teams` (équipes, demandes d'adhésion), `chat`.
+Fonctionnalités : `users` (authentification), `games`, `tournaments` (tournois, arbre, matchs), `teams` (équipes, demandes d'adhésion), `chat`, `bets` (paris en Écus des spectateurs).
 
 Une route se déclare une seule fois (`route({...})` dans `infrastructure/http.ts`) : la même déclaration fixe les droits
 d'accès (`public`, `authenticated`, `admin`), valide les entrées et produit la documentation OpenAPI.

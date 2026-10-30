@@ -122,3 +122,21 @@ CREATE TABLE IF NOT EXISTS message_reads (
   last_read_message_id INTEGER NOT NULL,
   PRIMARY KEY (team_id, user_id)
 ) STRICT;
+
+-- Paris en Écus (points de jeu) : un pari par spectateur et par match, réglé au résultat
+CREATE TABLE IF NOT EXISTS bets (
+  id         INTEGER PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  match_id   INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  team_id    INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  amount     INTEGER NOT NULL CHECK (amount >= 10),
+  status     TEXT    NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'won', 'lost', 'refunded')),
+  payout     INTEGER CHECK (payout >= 0),
+  created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  settled_at TEXT,
+  UNIQUE (user_id, match_id),
+  CHECK ((status = 'pending') = (payout IS NULL))
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_bets_match ON bets (match_id);
+CREATE INDEX IF NOT EXISTS idx_bets_settled ON bets (settled_at);

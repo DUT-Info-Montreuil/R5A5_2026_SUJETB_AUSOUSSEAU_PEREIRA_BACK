@@ -7,6 +7,8 @@ import { SqliteGameRepository } from './features/games/infrastructure/sqliteGame
 import { JoinRequestService } from './features/teams/application/joinRequestService.js';
 import { TeamService } from './features/teams/application/teamService.js';
 import { SqliteJoinRequestRepository, SqliteTeamRepository } from './features/teams/infrastructure/sqliteTeamRepositories.js';
+import { BetService } from './features/bets/application/betService.js';
+import { SqliteBetRepository } from './features/bets/infrastructure/sqliteBetRepository.js';
 import { MatchService } from './features/tournaments/application/matchService.js';
 import { TournamentReader } from './features/tournaments/application/tournamentReader.js';
 import { TournamentService } from './features/tournaments/application/tournamentService.js';
@@ -31,6 +33,7 @@ export function createContainer(db: Database, config: Config, logger: Logger) {
         teams: new SqliteTeamRepository(db),
         joinRequests: new SqliteJoinRequestRepository(db),
         messages: new SqliteMessageRepository(db),
+        bets: new SqliteBetRepository(db),
     };
     const tokens = new JwtTokenService(config.jwtSecret, config.jwtExpiresIn);
 
@@ -42,7 +45,8 @@ export function createContainer(db: Database, config: Config, logger: Logger) {
         throttle: new MemoryLoginThrottle(),
         logger,
     });
-    const matchService = new MatchService({ ...repositories, reader, notifier, uow, logger });
+    const betService = new BetService({ ...repositories, reader, notifier, uow, logger, clock: () => new Date() });
+    const matchService = new MatchService({ ...repositories, reader, bets: betService, notifier, uow, logger });
     const tournamentService = new TournamentService({ ...repositories, matchService, reader, notifier, uow, logger, randomInt });
     const teamService = new TeamService({ ...repositories, reader, notifier, uow, logger });
     const joinRequestService = new JoinRequestService({ ...repositories, teamService, reader, notifier, uow, logger });
@@ -58,6 +62,7 @@ export function createContainer(db: Database, config: Config, logger: Logger) {
         matchService,
         teamService,
         joinRequestService,
+        betService,
         chatService: new ChatService({ messages: repositories.messages, reader, notifier }),
     };
 }

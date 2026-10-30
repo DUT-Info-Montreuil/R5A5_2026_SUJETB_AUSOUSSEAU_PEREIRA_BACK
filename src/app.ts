@@ -2,6 +2,7 @@ import cors from 'cors';
 import express, { type Express } from 'express';
 import swaggerUi from 'swagger-ui-express';
 import type { Container } from './container.js';
+import { betRoutes } from './features/bets/infrastructure/http.js';
 import { chatRoutes } from './features/chat/infrastructure/http.js';
 import { gameRoutes } from './features/games/infrastructure/http.js';
 import { teamRoutes } from './features/teams/infrastructure/http.js';
@@ -25,6 +26,7 @@ export function apiRoutes(c: Container): AnyRoute[] {
         ...tournamentRoutes(c.tournamentService, c.matchService, c.teamService),
         ...teamRoutes(c.teamService, c.joinRequestService),
         ...chatRoutes(c.chatService),
+        ...betRoutes(c.betService),
     ];
 }
 

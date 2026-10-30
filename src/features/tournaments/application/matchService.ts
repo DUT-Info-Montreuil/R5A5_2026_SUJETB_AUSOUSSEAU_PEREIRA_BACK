@@ -13,7 +13,7 @@ import {
     winnerByScore,
     type Match,
 } from '../domain/bracket.js';
-import type { MatchRepository, TournamentRepository } from './ports.js';
+import type { BetSettlement, MatchRepository, TournamentRepository } from './ports.js';
 import type { TournamentReader } from './tournamentReader.js';
 
 /** Ce qu'a produit une validation de match, à diffuser une fois la transaction terminée. */
@@ -21,6 +21,7 @@ export interface Decision {
     tournamentId: number;
     loserId: number;
     changedMatchIds: number[];
+    bettorIds: number[];
 }
 
 export class MatchService {
@@ -28,6 +29,7 @@ export class MatchService {
     private readonly teams: TeamRepository;
     private readonly tournaments: TournamentRepository;
     private readonly reader: TournamentReader;
+    private readonly bets: BetSettlement;
     private readonly notifier: RealtimeNotifier;
     private readonly uow: UnitOfWork;
     private readonly logger: Logger;
@@ -37,6 +39,7 @@ export class MatchService {
         teams: TeamRepository;
         tournaments: TournamentRepository;
         reader: TournamentReader;
+        bets: BetSettlement;
         notifier: RealtimeNotifier;
         uow: UnitOfWork;
         logger: Logger;
@@ -45,6 +48,7 @@ export class MatchService {
         this.teams = deps.teams;
         this.tournaments = deps.tournaments;
         this.reader = deps.reader;
+        this.bets = deps.bets;
         this.notifier = deps.notifier;
         this.uow = deps.uow;
         this.logger = deps.logger;
@@ -85,6 +89,7 @@ export class MatchService {
         const updated = this.matches.findById(matchId)!;
         this.notifier.matchUpdated(updated);
         this.reader.publishTournament(match.tournamentId);
+        this.bets.announce(match.tournamentId, []); // l'horaire ferme (ou rouvre) les paris
         return updated;
     }
 
@@ -106,12 +111,13 @@ export class MatchService {
         return decisions;
     }
 
-    /** Après commit : matchs modifiés et fermeture du chat de l'éliminé (B-18). L'appelant publie le tournoi. */
+    /** Après commit : matchs modifiés, fermeture du chat de l'éliminé (B-18) et paris réglés. L'appelant publie le tournoi. */
     broadcast(decisions: Decision[]): void {
-        for (const { loserId, changedMatchIds } of decisions) {
+        for (const { tournamentId, loserId, changedMatchIds, bettorIds } of decisions) {
             for (const id of changedMatchIds) this.notifier.matchUpdated(this.matches.findById(id)!);
             this.reader.publishTeam(loserId);
             this.notifier.teamChatClosed(loserId);
+            this.bets.announce(tournamentId, bettorIds);
         }
     }
 
@@ -131,6 +137,7 @@ export class MatchService {
         const loserId = loserOf(match, winnerId);
         this.matches.finish(match.id, { winnerId, ...scores, isForfeit });
         this.teams.setEliminated(loserId);
+        const bettorIds = this.bets.settle(match.id, winnerId);
 
         const changedMatchIds = [match.id];
         const next = nextMatchSlot(match);
@@ -142,6 +149,6 @@ export class MatchService {
             this.tournaments.setStatus(match.tournamentId, 'finished');
             this.logger.info('tournament_finished', { tournament: match.tournamentId, winner: winnerId });
         }
-        return { tournamentId: match.tournamentId, loserId, changedMatchIds };
+        return { tournamentId: match.tournamentId, loserId, changedMatchIds, bettorIds };
     }
 }

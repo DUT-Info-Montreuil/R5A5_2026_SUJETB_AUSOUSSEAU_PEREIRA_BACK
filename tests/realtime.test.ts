@@ -7,7 +7,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRealtime } from '../src/realtime/socketServer.js';
 import { app, container } from './context.js';
-import { bearer, createTeam, createTournament, quickUser, type TestUser } from './helpers.js';
+import { bearer, closedTournament, createTeam, createTournament, matchesOf, quickUser, type TestUser } from './helpers.js';
 
 const ALLOWED_ORIGIN = 'http://localhost:5173';
 
@@ -92,6 +92,26 @@ describe('Socket.IO', () => {
         const update = next<{ teams: unknown[] }>(visitor, 'tournament:updated');
         await request(app).post(`/api/tournaments/${t.id}/teams`).set(...bearer(quickUser())).send({ name: 'Live' });
         expect((await update).teams).toHaveLength(1);
+    });
+
+    it('paris : le public voit la cagnotte bouger, seul le parieur reçoit son solde', async () => {
+        const t = await closedTournament();
+        const q1 = matchesOf(t.id)[0]!;
+        const fan = quickUser();
+        const visitor = await client();
+        const fanSocket = await client(fan);
+        await join(visitor, 'tournament:join', t.id);
+
+        const pools = next<{ tournamentId: number; matches: { pot: number }[] }>(visitor, 'bets:updated');
+        const wallet = next<{ balance: number }>(fanSocket, 'wallet:updated');
+        let visitorWallet = false;
+        visitor.on('wallet:updated', () => (visitorWallet = true));
+        await request(app).post(`/api/matches/${q1.id}/bets`).set(...bearer(fan)).send({ teamId: q1.team_a_id, amount: 25 });
+
+        expect((await pools).matches[0]!.pot).toBe(25);
+        expect(await wallet).toEqual({ balance: 75 });
+        await settle();
+        expect(visitorWallet).toBe(false);
     });
 
     it('B-16 : salon d\'équipe refusé au visiteur et à l\'extérieur', async () => {

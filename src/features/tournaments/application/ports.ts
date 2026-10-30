@@ -29,3 +29,10 @@ export interface MatchRepository {
     /** Place une équipe ; le match devient jouable quand ses deux équipes sont connues. */
     placeTeam(id: number, slot: Slot, teamId: number): void;
 }
+
+/** Les paris d'un match se règlent dans la transaction de son résultat, et s'annoncent après le commit. */
+export interface BetSettlement {
+    /** Renvoie les parieurs du match. */
+    settle(matchId: number, winnerId: number): number[];
+    announce(tournamentId: number, userIds: number[]): void;
+}

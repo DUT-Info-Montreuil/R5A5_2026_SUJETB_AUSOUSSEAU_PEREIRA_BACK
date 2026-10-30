@@ -1,3 +1,4 @@
+import type { BetPool } from '../../features/bets/application/ports.js';
 import type { Message } from '../../features/chat/domain/message.js';
 import type { JoinRequest, Team } from '../../features/teams/domain/team.js';
 import type { Match } from '../../features/tournaments/domain/bracket.js';
@@ -29,4 +30,8 @@ export interface RealtimeNotifier {
     joinRequestCreated(request: JoinRequest, captainId: number): void;
     /** L'auteur apprend que sa demande est acceptée, refusée ou annulée. */
     joinRequestUpdated(request: JoinRequest): void;
+    /** Cagnottes du tournoi : pari posé ou annulé, match réglé, horaire changé. */
+    betsUpdated(tournamentId: number, pools: BetPool[]): void;
+    /** Le parieur voit son solde bouger. */
+    walletUpdated(userId: number, balance: number): void;
 }

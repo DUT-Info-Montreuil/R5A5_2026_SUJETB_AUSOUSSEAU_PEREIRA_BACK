@@ -1,6 +1,6 @@
 # Ce que le back attend du front
 
-Réponse au `BACK-ATTENDU.md` du dépôt FRONT : les sept points sont livrés côté back (le 7e : équipes hors tournoi). Ce fichier liste ce que
+Réponse au `BACK-ATTENDU.md` du dépôt FRONT : les sept points sont livrés côté back (le 7e : équipes hors tournoi), ainsi que les paris en Écus de `feat/paris` (§ 9). Ce fichier liste ce que
 le front doit changer pour les utiliser et retirer ses contournements. Le détail des routes est dans
 `api-routes.md` et sur `/docs` (OpenAPI générée depuis le code).
 
@@ -121,6 +121,28 @@ POST /api/teams/:id/register { tournamentId } → 200 { team }   (capitaine)
   vérifiée par SQLite quand `tournament_id` est NULL). Demandes et messages partaient déjà en cascade.
 - Au démarrage, le back purge les membres orphelins laissés avant le correctif : rien à nettoyer à la main.
 - Le départ du dernier membre n'était pas touché (le membre est retiré avant l'équipe).
+
+## 9. Paris en Écus : livrés tels que demandés
+
+Routes, types (`BetPoolDto`, `MyBetDto`, `BettorDto`) et événements (`bets:updated`, `wallet:updated`) ont
+exactement la forme du `BACK-ATTENDU.md` de `feat/paris`. Les pronostics d'arbre sont retirés du back.
+
+Précisions :
+
+- `wallet:updated` arrive dans le salon personnel (rejoint à la connexion avec un token), `bets:updated` dans le
+  salon du tournoi (`tournament:join`). `bets:updated` part aussi quand l'admin change `scheduledAt` : `open` et
+  `closesAt` peuvent changer sans pari.
+- `open` est calculé à la lecture : quand `closesAt` passe, rien n'est émis. Le front fait son compte à rebours
+  et grise le bouton à `closesAt` ; le back refuse ensuite avec `409 BETS_CLOSED`.
+- `pools` ne contient que les équipes connues du match : vide pour une demie dont aucune équipe n'est qualifiée.
+- Les quarts perdus par forfait au lancement sont réglés au lancement, comme les autres.
+- `DELETE /api/matches/:id/bets/me` sans pari : `404 BET_NOT_FOUND`.
+- `?week=` vaut `current` par défaut ; une autre valeur est refusée (`400`).
+- Ordre des erreurs de `POST /api/matches/:id/bets` : `400` (mise < 10), `404 MATCH_NOT_FOUND`, `403 ADMIN_CANNOT_BET /
+  PLAYER_CANNOT_BET`, `409 BETS_CLOSED`, `422 TEAM_NOT_IN_MATCH`, `409 ALREADY_BET`, `409 INSUFFICIENT_FUNDS`.
+
+**À savoir** : sans `scheduledAt`, les paris restent ouverts jusqu'à la saisie du résultat, donc pendant que le
+match se joue. Pour l'éviter, l'admin fixe l'horaire de chaque match ; le front peut le rappeler dans l'écran admin.
 
 ## Rappel de configuration
 

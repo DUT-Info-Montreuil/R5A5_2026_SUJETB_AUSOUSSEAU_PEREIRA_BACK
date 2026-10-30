@@ -2,6 +2,8 @@ import type { Server } from 'socket.io';
 import type { RealtimeNotifier, TournamentDetail } from '../shared/application/realtimeNotifier.js';
 import type { Message } from '../features/chat/domain/message.js';
 import { toMessageResponse } from '../features/chat/infrastructure/http.js';
+import type { BetPool } from '../features/bets/application/ports.js';
+import { toBetPoolResponse } from '../features/bets/infrastructure/http.js';
 import type { JoinRequest, Team } from '../features/teams/domain/team.js';
 import { toJoinRequestResponse, toTeamResponse } from '../features/teams/infrastructure/http.js';
 import type { Match } from '../features/tournaments/domain/bracket.js';
@@ -65,5 +67,13 @@ export class SocketIoNotifier implements RealtimeNotifier {
 
     joinRequestUpdated(request: JoinRequest): void {
         this.io?.to(rooms.user(request.user.id)).emit('joinRequest:updated', toJoinRequestResponse(request));
+    }
+
+    betsUpdated(tournamentId: number, pools: BetPool[]): void {
+        this.io?.to(rooms.tournament(tournamentId)).emit('bets:updated', { tournamentId, matches: pools.map(toBetPoolResponse) });
+    }
+
+    walletUpdated(userId: number, balance: number): void {
+        this.io?.to(rooms.user(userId)).emit('wallet:updated', { balance });
     }
 }
