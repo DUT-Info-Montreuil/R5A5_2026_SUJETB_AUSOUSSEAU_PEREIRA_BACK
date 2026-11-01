@@ -23,6 +23,11 @@ const COMMON_PASSWORDS = new Set([
     'azertyuiop', 'qwertyuiop', 'azerty123', 'qwerty123', '11111111', '00000000', 'iloveyou',
     'sunshine', 'princess', 'football', 'baseball', 'welcome1', 'abcd1234', 'letmein1',
     'admin123', 'administrateur', 'soleil123', 'bonjour1', 'doudou123', 'chouchou',
+    // mots de passe évidents pour une plateforme esport (nom du site, jeux, vocabulaire)
+    'archrivals', 'archrivals1', 'archrivals123', 'tournoi123', 'esport123', 'gamer123',
+    'minecraft', 'minecraft1', 'fortnite', 'fortnite1', 'valorant', 'valorant1',
+    'leagueoflegends', 'counterstrike', 'overwatch', 'rocketleague', 'pokemon1', 'pikachu1',
+    'gameover', 'playstation', 'nintendo', 'starwars', 'dragonball', 'superman',
 ]);
 
 /** Politique du cours : la longueur prime, et les mots de passe connus sont refusés. */
