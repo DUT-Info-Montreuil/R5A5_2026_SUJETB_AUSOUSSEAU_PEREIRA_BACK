@@ -1,10 +1,17 @@
 // Implémentations des ports de sécurité : hachage, jetons, freinage des essais de connexion
+import { readFileSync } from 'node:fs';
 import bcrypt from 'bcryptjs';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { TooManyAttemptsError, UnauthenticatedError } from '../../../shared/domain/errors.js';
 import type { LoginThrottle, PasswordHasher, TokenService } from '../application/ports.js';
 
 const BCRYPT_COST = 12;
+
+// 73 078 mots de passe de 12+ caractères issus de SecLists (MIT, en minuscules), complétés par les
+// plus fréquents de 8 à 11 caractères et ceux propres à une plateforme esport. Lu une fois au démarrage.
+export const KNOWN_PASSWORDS: ReadonlySet<string> = new Set(
+    readFileSync(new URL('./common-passwords.txt', import.meta.url), 'utf-8').split(/\r?\n/).filter((line) => line !== ''),
+);
 
 export class BcryptPasswordHasher implements PasswordHasher {
     hash(password: string): Promise<string> {

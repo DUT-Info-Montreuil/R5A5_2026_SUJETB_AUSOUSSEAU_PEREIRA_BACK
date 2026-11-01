@@ -90,6 +90,12 @@ describe('Durcissement', () => {
         expect(res.body.error.code).toBe('PASSWORD_TOO_COMMON');
     });
 
+    it('refuse aussi un mot de passe long de la liste SecLists, quelle que soit la casse (422)', async () => {
+        const res = await request(app).post('/api/auth/register').send({ ...validUser, password: 'ILoveYouForever' });
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe('PASSWORD_TOO_COMMON');
+    });
+
     it('ne renvoie jamais le détail d\'une erreur 500', async () => {
         const broken = createApp({ ...container, gameService: { list: () => { throw new Error('SELECT secret FROM table'); } } } as never, config);
         const res = await request(broken).get('/api/games');

@@ -4,7 +4,7 @@ import { app, container, db } from './context.js';
 export const validUser = {
     username: 'alice',
     email: 'alice@example.com',
-    password: 'motdepasse123',
+    password: 'rivaux-arene-2026',
 };
 
 export async function registerUser(overrides: Partial<typeof validUser> = {}) {

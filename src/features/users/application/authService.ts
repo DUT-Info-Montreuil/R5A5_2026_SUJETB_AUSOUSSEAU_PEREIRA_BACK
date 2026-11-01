@@ -30,20 +30,22 @@ export class AuthService {
     private readonly tokens: TokenService;
     private readonly throttle: LoginThrottle;
     private readonly logger: Logger;
+    private readonly knownPasswords: ReadonlySet<string>;
     // Comparé quand l'email est inconnu : le temps de réponse ne révèle pas si le compte existe
     private dummyHash?: Promise<string>;
 
-    constructor(deps: { users: UserRepository; hasher: PasswordHasher; tokens: TokenService; throttle: LoginThrottle; logger: Logger }) {
+    constructor(deps: { users: UserRepository; hasher: PasswordHasher; tokens: TokenService; throttle: LoginThrottle; logger: Logger; knownPasswords: ReadonlySet<string> }) {
         this.users = deps.users;
         this.hasher = deps.hasher;
         this.tokens = deps.tokens;
         this.throttle = deps.throttle;
         this.logger = deps.logger;
+        this.knownPasswords = deps.knownPasswords;
     }
 
     /** `isAdmin` n'est jamais exposé à l'inscription : seul le script seed:admin le passe à true. */
     async createUser(input: RegisterInput, isAdmin = false): Promise<User> {
-        assertAcceptablePassword(input.password);
+        assertAcceptablePassword(input.password, this.knownPasswords);
         const existing = this.users.findByEmailOrUsername(input.email, input.username);
         if (existing.some((u) => u.email === input.email)) {
             throw new ConflictError('EMAIL_TAKEN', 'Cet email est déjà utilisé');

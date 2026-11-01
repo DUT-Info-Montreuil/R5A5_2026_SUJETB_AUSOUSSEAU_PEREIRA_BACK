@@ -14,7 +14,7 @@ import { TournamentReader } from './features/tournaments/application/tournamentR
 import { TournamentService } from './features/tournaments/application/tournamentService.js';
 import { SqliteMatchRepository, SqliteTournamentRepository } from './features/tournaments/infrastructure/sqliteTournamentRepositories.js';
 import { AuthService } from './features/users/application/authService.js';
-import { BcryptPasswordHasher, JwtTokenService, MemoryLoginThrottle } from './features/users/infrastructure/security.js';
+import { BcryptPasswordHasher, JwtTokenService, KNOWN_PASSWORDS, MemoryLoginThrottle } from './features/users/infrastructure/security.js';
 import { SqliteUserRepository } from './features/users/infrastructure/sqliteUserRepository.js';
 import { SocketIoNotifier } from './realtime/socketIoNotifier.js';
 import type { Logger } from './shared/application/ports.js';
@@ -44,6 +44,7 @@ export function createContainer(db: Database, config: Config, logger: Logger) {
         tokens,
         throttle: new MemoryLoginThrottle(),
         logger,
+        knownPasswords: KNOWN_PASSWORDS,
     });
     const betService = new BetService({ ...repositories, reader, notifier, uow, logger, clock: () => new Date() });
     const matchService = new MatchService({ ...repositories, reader, bets: betService, notifier, uow, logger });
